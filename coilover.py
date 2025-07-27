@@ -449,7 +449,10 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # Compute current spring length
         Lcurrent   = self.Lfree - (self.Lfree - self.Lcompr) * f
         spring_z0  = self.bottom_anchor
-        spring_z1  = Lcurrent - (self.Dwire / 2)
+        if Lcurrent - (self.Dwire / 2) < (self.bottom_anchor + self.L0):
+            spring_z1  = Lcurrent - (self.Dwire / 2)
+        else:
+            spring_z1 = self.bottom_anchor + self.L0
 
         # Regenerate the helix points & update the line
         zs = np.linspace(spring_z0, spring_z1, self.theta.size)
