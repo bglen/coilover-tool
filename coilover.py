@@ -122,6 +122,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         # ─── Right panel: 3D view ───────────────────────────────────
         self.view = gl.GLViewWidget()
+        self.view.opts['lightPosition'] = (10, 10, 40)
         self.view.opts['distance'] = 600
         self.view.setBackgroundColor('#181818')
 
@@ -318,13 +319,27 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         # Create damper body
         cyl = self.make_cylinder(Dbody/2, Lbody, 32)
-        self.body_mesh = gl.GLMeshItem(meshdata=cyl, smooth=True, color=(0.4,0.4,0.4,1))
+        self.body_mesh = gl.GLMeshItem(
+            meshdata=cyl,
+            smooth=True, 
+            color=(0.4,0.4,0.4,1),
+            shader='shaded',         # turn on per‐vertex lighting
+            glOptions='opaque',      # so it renders solid faces
+            computeNormals=True      # auto-generate normals from faces
+        )
         self.body_mesh.translate(0, 0, Lbody/2) # bottom of damper body is the origin
         self.view.addItem(self.body_mesh)
 
         # Create damper shaft
         shaft = self.make_cylinder(Dshaft/2, self.shaft_length, 16)
-        self.shaft_mesh = gl.GLMeshItem(meshdata=shaft, smooth=True, color=(0.8,0.1,0.1,1))
+        self.shaft_mesh = gl.GLMeshItem(
+            meshdata=shaft,
+            smooth=True,
+            color=(0.8,0.1,0.1,1),
+            shader='shaded',         # turn on per‐vertex lighting
+            glOptions='opaque',      # so it renders solid faces
+            computeNormals=True      # auto-generate normals from faces
+        )
         self.shaft_mesh.translate(0, 0, (Lfree - self.shaft_length/2))
         self.view.addItem(self.shaft_mesh)
 
@@ -344,7 +359,14 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         z1 = z0 + self.L0
         pts = np.vstack((self.spring_x, self.spring_y, np.linspace(z0, z1, theta.size))).T
         wire = self.make_spring_wire(pts, 5)
-        self.spring_mesh = gl.GLMeshItem(meshdata=wire, smooth=True, color=(0.1,0.1,0.8,1))
+        self.spring_mesh = gl.GLMeshItem(
+            meshdata=wire,
+            smooth=True,
+            color=(0.1,0.1,0.8,1),
+            shader='shaded',         # turn on per‐vertex lighting
+            glOptions='opaque',      # so it renders solid faces
+            computeNormals=True      # auto-generate normals from faces
+            )
         self.view.addItem(self.spring_mesh)
 
         # travel info
