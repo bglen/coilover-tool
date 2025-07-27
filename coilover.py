@@ -26,32 +26,77 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.perch_input      = QtWidgets.QLineEdit("10")   # mm
         self.shaft_length     = float(self.damper_compr.text())
         self.coils = 10
+        self.unit = "mm"
 
-        # 2) Spring group
+        # Settings group
+        settings_group  = QtWidgets.QGroupBox("Settings")
+        settings_layout = QtWidgets.QHBoxLayout()
+
+        self.radio_mm = QtWidgets.QRadioButton("mm")
+        self.radio_in = QtWidgets.QRadioButton("in")
+        self.radio_mm.setChecked(True)           # default = millimeters
+        self.radio_mm.toggled.connect(self.on_unit_changed)
+
+        settings_layout.addWidget(self.radio_mm)
+        settings_layout.addWidget(self.radio_in)
+        settings_group.setLayout(settings_layout)
+
+        # Spring group
         spring_group   = QtWidgets.QGroupBox("Spring")
         spring_layout  = QtWidgets.QFormLayout()
-        spring_layout.addRow("Inner diameter (mm):",   self.spring_id)
-        spring_layout.addRow("Free length (mm):",      self.spring_free)
-        spring_layout.addRow("Rate (N/mm):",           self.spring_rate)
-        spring_layout.addRow("Length at bind (mm):",   self.spring_bind)
+
+        lbl = QtWidgets.QLabel("Inner diameter (mm):")
+        lbl.setObjectName("Inner diameter")
+        spring_layout.addRow(lbl,   self.spring_id)
+
+        lbl = QtWidgets.QLabel("Spring free length (mm):")
+        lbl.setObjectName("Spring free length")
+        spring_layout.addRow(lbl,      self.spring_free)
+
+        lbl = QtWidgets.QLabel("Spring Rate (N/mm):")
+        lbl.setObjectName("Spring Rate")
+        spring_layout.addRow(lbl,           self.spring_rate)
+
+        lbl = QtWidgets.QLabel("Length at bind (mm):")
+        lbl.setObjectName("Length at bind")
+        spring_layout.addRow(lbl,   self.spring_bind)
+
         spring_group.setLayout(spring_layout)
 
-        # 3) Damper group
+        # Damper group
         damper_group  = QtWidgets.QGroupBox("Damper")
         damper_layout = QtWidgets.QFormLayout()
-        damper_layout.addRow("Free length (mm):",           self.damper_free)
-        damper_layout.addRow("Compressed length (mm):",     self.damper_compr)
-        damper_layout.addRow("Body length (mm):",           self.damper_body_len)
-        damper_layout.addRow("Body diameter (mm):",         self.damper_body_dia)
-        damper_layout.addRow("Shaft diameter (mm):",        self.damper_shaft_dia)
+
+        lbl = QtWidgets.QLabel("Damper free length (mm):")
+        lbl.setObjectName("Damper free length")
+        damper_layout.addRow(lbl,           self.damper_free)
+
+        lbl = QtWidgets.QLabel("Compressed length (mm):")
+        lbl.setObjectName("Compressed length")
+        damper_layout.addRow(lbl,     self.damper_compr)
+
+        lbl = QtWidgets.QLabel("Body length (mm):")
+        lbl.setObjectName("Body length")
+        damper_layout.addRow(lbl,           self.damper_body_len)
+
+        lbl = QtWidgets.QLabel("Body diameter (mm):")
+        lbl.setObjectName("Body diameter")
+        damper_layout.addRow(lbl,         self.damper_body_dia)
+
+        lbl = QtWidgets.QLabel("Shaft diameter (mm):")
+        lbl.setObjectName("Shaft diameter")
+        damper_layout.addRow(lbl,        self.damper_shaft_dia)
+
         damper_group.setLayout(damper_layout)
 
-        # 4) Perch distance (still its own entry)
+        # System
         self.perch_input = QtWidgets.QLineEdit("10")
-        perch_label = QtWidgets.QLabel("Spring perch dist. (mm):")
+        perch_label = QtWidgets.QLabel("Spring perch distance (mm):")
+        perch_label.setObjectName("Spring perch distance")
 
-        # 5) Assemble left‐side layout
+        # Assemble left‐side layout
         left_layout = QtWidgets.QVBoxLayout()
+        left_layout.addWidget(settings_group)
         left_layout.addWidget(spring_group)
         left_layout.addWidget(damper_group)
 
@@ -109,17 +154,64 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # initial draw
         self.update_view()
 
+    def on_unit_changed(self):
+        """
+        Re label inputs and convert their numeric values.
+        """
+        new_unit = "in" if self.radio_in.isChecked() else "mm"
+        if new_unit == self.unit:
+            return
+
+        # conversion factors
+        to_in  = lambda x: x/25.4
+        to_mm  = lambda x: x*25.4
+        conv   = to_in if new_unit=="in" else to_mm
+
+        # for each (widget, attr_name) in your inputs:
+        for widget, label_base in [
+            (self.spring_id,    "Inner diameter"),
+            (self.spring_free,  "Spring free length"),
+            (self.spring_rate,  "Spring Rate"),
+            (self.spring_bind,  "Length at bind"),
+            (self.damper_free,  "Damper free length"),
+            (self.damper_compr, "Compressed length"),
+            (self.damper_body_len,  "Body length"),
+            (self.damper_body_dia,  "Body diameter"),
+            (self.damper_shaft_dia, "Shaft diameter"),
+            (self.perch_input,  "Spring perch distance"),
+        ]:
+            # read old value, convert to new unit
+            try:
+                old_val = float(widget.text())
+                new_val = conv(old_val)
+                widget.setText(f"{new_val:.3f}")
+            except ValueError:
+                pass
+
+            # update the form label text
+            label = widget.parentWidget().findChild(QtWidgets.QLabel, label_base)
+            if label:
+                label.setText(f"{label_base} ({new_unit})")
+
+        self.unit = new_unit
+
+    def read_length(self, widget):
+        val = float(widget.text())
+        if self.unit == "in":
+            return val * 25.4  # convert inches back to mm
+        return val            # already in mm
+
     def update_view(self):
         # read inputs
-        ID      = float(self.spring_id.text()) 
-        L0      = float(self.spring_free.text())
-        Lbind   = float(self.spring_bind.text())
-        Dbody   = float(self.damper_body_dia.text())
-        Lbody   = float(self.damper_body_len.text())
-        Dshaft  = float(self.damper_shaft_dia.text())
-        perch   = float(self.perch_input.text())
-        Lfree   = float(self.damper_free.text())
-        Lcompr  = float(self.damper_compr.text())
+        ID      = self.read_length(self.spring_id)
+        L0      = self.read_length(self.spring_free)
+        Lbind   = self.read_length(self.spring_bind)
+        Dbody   = self.read_length(self.damper_body_dia)
+        Lbody   = self.read_length(self.damper_body_len)
+        Dshaft  = self.read_length(self.damper_shaft_dia)
+        perch   = self.read_length(self.perch_input)
+        Lfree   = self.read_length(self.damper_free)
+        Lcompr  = self.read_length(self.damper_compr)
 
         # clear old
         for item in [self.spring_mesh, self.body_mesh, self.shaft_mesh]:
