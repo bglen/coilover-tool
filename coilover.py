@@ -20,7 +20,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.spring_free      = QtWidgets.QLineEdit("200")  # mm
         self.spring_rate      = QtWidgets.QLineEdit("100")  # N/mm
         self.spring_bind      = QtWidgets.QLineEdit("50")   # mm
-        self.damper_free      = QtWidgets.QLineEdit("300")  # mm
+        self.damper_free      = QtWidgets.QLineEdit("400")  # mm
         self.damper_compr     = QtWidgets.QLineEdit("250")  # mm
         self.damper_body_len  = QtWidgets.QLineEdit("200")  # mm
         self.damper_body_dia  = QtWidgets.QLineEdit("50")   # mm
@@ -347,7 +347,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             glOptions='opaque',      # so it renders solid faces
             computeNormals=True      # auto-generate normals from faces
         )
-        self.shaft_mesh.translate(0, 0, (Lfree - self.shaft_length/2))
+        self.shaft_mesh.translate(0, 0, (self.shaft_length/2 + (Lfree - Lcompr)))
         self.view.addItem(self.shaft_mesh)
 
         # Create spring helix
@@ -361,6 +361,10 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.L0            = L0                   # free spring length
         self.Lbind         = Lbind                # coil‑bind length
         self.Dwire         = Dwire
+        self.Lfree = Lfree
+        self.Lcompr = Lcompr
+        self.spring_z0 = 0
+        self.spring_z1 = -min(L0 - Lbind, L0)
 
         # Create GLLinePlotItem for the spring
         z0 = self.bottom_anchor
@@ -377,9 +381,62 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             )
         self.view.addItem(self.spring_mesh)
 
+        # Upper spring perch
+        spring_id        = float(self.spring_id.text())
+        perch_clearance  = 2.0       # mm beyond spring OD
+        cyl_thickness    = 5.0       # cylinder height
+        cone_height      = 10.0      # cone height
+        plate_dia        = spring_id + perch_clearance
+        cyl_radius       = plate_dia/2.0
+
+        # remove old perch if exists
+        if hasattr(self, 'upper_perch'):
+            self.view.removeItem(self.upper_perch)
+        if hasattr(self, 'upper_cone'):
+            self.view.removeItem(self.upper_cone)
+
+        cyl_mesh = self.make_cylinder(cyl_radius, cyl_thickness, sectors=32)
+        self.upper_perch = gl.GLMeshItem(
+            meshdata=cyl_mesh, smooth=True,
+            color=(0.6,0.6,0.6,1),
+            shader='shaded', glOptions='opaque', computeNormals=True
+        )
+        # center its bottom on spring_top_z:
+        cyl_center_z = Lfree + cyl_thickness/2.0
+        self.upper_perch.translate(0, 0, cyl_center_z)
+        self.view.addItem(self.upper_perch)
+
+        # Build cone for upper perch
+        # Build base ring
+        n_segs = 32
+        angles = np.linspace(0, 2*np.pi, n_segs, endpoint=False)
+        base_pts = np.vstack([
+            cyl_radius*np.cos(angles),
+            cyl_radius*np.sin(angles),
+            np.full_like(angles, Lfree + cyl_thickness)
+        ]).T
+        # tip vertex
+        tip = np.array([0, 0, Lfree + cyl_thickness + cone_height])
+
+        # assemble verts & faces
+        verts = np.vstack([base_pts, tip])
+        faces = []
+        tip_idx = len(verts) - 1
+        for i in range(n_segs):
+            a = i
+            b = (i+1) % n_segs
+            # triangle (a, b, tip)
+            faces.append([a, b, tip_idx])
+
+        cone_mesh = gl.MeshData(vertexes=verts, faces=np.array(faces))
+        self.upper_cone = gl.GLMeshItem(
+            meshdata=cone_mesh, smooth=True,
+            color=(0.7,0.7,0.7,1),
+            shader='shaded', glOptions='opaque', computeNormals=True
+        )
+        self.view.addItem(self.upper_cone)
+
         # travel info
-        self.spring_z0 = 0
-        self.spring_z1 = -min(L0 - Lbind, L0)
         self._perch = perch
         self.animate(self.slider.value())
 
@@ -390,9 +447,9 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         f = t / 100
 
         # Compute current spring length
-        Lcurrent   = self.L0 - (self.L0 - self.Lbind) * f
+        Lcurrent   = self.Lfree - (self.Lfree - self.Lcompr) * f
         spring_z0  = self.bottom_anchor
-        spring_z1  = spring_z0 + Lcurrent
+        spring_z1  = Lcurrent - (self.Dwire / 2)
 
         # Regenerate the helix points & update the line
         zs = np.linspace(spring_z0, spring_z1, self.theta.size)
@@ -401,9 +458,15 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.spring_mesh.setMeshData(meshdata=new_wire)
 
         # Reposition the shaft so its *bottom* rests on the spring top
-        shaft_center = spring_z1 - self.shaft_length/2
+        shaft_center = Lcurrent - self.shaft_length/2
         self.shaft_mesh.resetTransform()
         self.shaft_mesh.translate(0, 0, shaft_center)
+
+        # Reposition upper spring perch
+        self.upper_perch.resetTransform()
+        self.upper_perch.translate(0, 0, Lcurrent + 2.5)
+        self.upper_cone.resetTransform()
+        self.upper_cone.translate(0, 0, (Lcurrent - self.Lfree))
 
         # Update overlay text
         self.info_label.setText(f"Coilover length: {Lcurrent:.1f} mm")
