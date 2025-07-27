@@ -16,6 +16,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # ─── Left panel: parameter inputs ────────────────────────────
         form = QtWidgets.QFormLayout()
         self.spring_id        = QtWidgets.QLineEdit("60")   # mm
+        self.spring_wire_dia  = QtWidgets.QLineEdit("10")   # mm
         self.spring_free      = QtWidgets.QLineEdit("200")  # mm
         self.spring_rate      = QtWidgets.QLineEdit("100")  # N/mm
         self.spring_bind      = QtWidgets.QLineEdit("50")   # mm
@@ -49,6 +50,10 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         lbl = QtWidgets.QLabel("Inner diameter (mm):")
         lbl.setObjectName("Inner diameter")
         spring_layout.addRow(lbl,   self.spring_id)
+
+        lbl = QtWidgets.QLabel("Wire diameter (mm):")
+        lbl.setObjectName("Wire diameter")
+        spring_layout.addRow(lbl,   self.spring_wire_dia)
 
         lbl = QtWidgets.QLabel("Spring free length (mm):")
         lbl.setObjectName("Spring free length")
@@ -206,6 +211,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # for each (widget, attr_name) in your inputs:
         for widget, label_base in [
             (self.spring_id,    "Inner diameter"),
+            (self.spring_wire_dia, "Wire diameter"),
             (self.spring_free,  "Spring free length"),
             (self.spring_rate,  "Spring Rate"),
             (self.spring_bind,  "Length at bind"),
@@ -304,6 +310,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         """
         # read inputs
         ID      = self.read_length(self.spring_id)
+        Dwire   = self.read_length(self.spring_wire_dia)
         L0      = self.read_length(self.spring_free)
         Lbind   = self.read_length(self.spring_bind)
         Dbody   = self.read_length(self.damper_body_dia)
@@ -350,15 +357,16 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.theta    = theta
 
         # store anchor & lengths
-        self.bottom_anchor = Lbody + perch              # world‐Z where spring’s bottom sits
+        self.bottom_anchor = Lbody + perch + Dwire/2              # world‐Z where spring’s bottom sits
         self.L0            = L0                   # free spring length
         self.Lbind         = Lbind                # coil‑bind length
+        self.Dwire         = Dwire
 
         # Create GLLinePlotItem for the spring
         z0 = self.bottom_anchor
         z1 = z0 + self.L0
         pts = np.vstack((self.spring_x, self.spring_y, np.linspace(z0, z1, theta.size))).T
-        wire = self.make_spring_wire(pts, 5)
+        wire = self.make_spring_wire(pts, Dwire/2)
         self.spring_mesh = gl.GLMeshItem(
             meshdata=wire,
             smooth=True,
@@ -389,7 +397,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # Regenerate the helix points & update the line
         zs = np.linspace(spring_z0, spring_z1, self.theta.size)
         pts = np.vstack((self.spring_x, self.spring_y, zs)).T
-        new_wire = self.make_spring_wire(pts, 5)
+        new_wire = self.make_spring_wire(pts, self.Dwire/2)
         self.spring_mesh.setMeshData(meshdata=new_wire)
 
         # Reposition the shaft so its *bottom* rests on the spring top
