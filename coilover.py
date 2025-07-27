@@ -2,6 +2,7 @@ import sys
 import numpy as np
 
 from PyQt5 import QtWidgets, QtCore
+from PyQt5.QtGui import QVector3D
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 
@@ -124,6 +125,29 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.view.opts['distance'] = 600
         self.view.setBackgroundColor('#181818')
 
+        # Text Overlays
+        self.info_label = QtWidgets.QLabel(self.view)
+        self.info_label.setStyleSheet("""
+            color: white;
+            background-color: rgba(0,0,0,0);
+            font-weight: bold;
+        """)
+        self.info_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self.info_label.move(10, 10)   # 10px from top‐left
+        self.info_label.show()
+
+        # bottom‐center help text
+        self.help_label = QtWidgets.QLabel(self.view)
+        self.help_label.setStyleSheet("""
+            color: white;
+            background-color: rgba(0,0,0,0);
+            font-size: 10pt;
+        """)
+        self.help_label.setText("Right-click to rotate; Scroll wheel to zoom; Cmd + right-click to pan")
+        self.help_label.adjustSize()
+        self.help_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self.help_label.show()
+
         # axes for reference
         axis = gl.GLAxisItem()
         axis.setSize(100,100,100)
@@ -131,6 +155,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         # slider for travel
         self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider.setFixedHeight(25)
         self.slider.setRange(0, 100)
         self.slider.setValue(0)
         self.slider.valueChanged.connect(self.animate)
@@ -138,18 +163,28 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # layout them
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         right_panel = QtWidgets.QVBoxLayout()
+
         w = QtWidgets.QWidget()
         w.setLayout(right_panel)
         right_panel.addWidget(self.view)
         right_panel.addWidget(self.slider)
         splitter.addWidget(left)
         splitter.addWidget(w)
+        # give left:1, right:2 proportion roughly 1/3 : 2/3
+        # Give right twice the stretch of left (i.e. ~2/3 of the width)
+        splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
 
         # placeholders
         self.spring_mesh = None
         self.body_mesh   = None
         self.shaft_mesh  = None
+
+        # Have the camera center on the top of the damper body
+        self.view.opts['center'] = QVector3D(0, 0, self.read_length(self.damper_body_len))
+        self.view.setCameraPosition(
+            azimuth=45        # rotate around Z by 0°
+        )
 
         # initial draw
         self.update_view()
@@ -196,12 +231,18 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.unit = new_unit
 
     def read_length(self, widget):
+        """
+        Ensures the 3D animation always reads the inputs in mm
+        """
         val = float(widget.text())
         if self.unit == "in":
             return val * 25.4  # convert inches back to mm
         return val            # already in mm
 
     def update_view(self):
+        """
+        Update and render the 3D visualization
+        """
         # read inputs
         ID      = self.read_length(self.spring_id)
         L0      = self.read_length(self.spring_free)
@@ -244,7 +285,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         z0 = self.bottom_anchor
         z1 = z0 + self.L0
         pts = np.vstack((self.spring_x, self.spring_y, np.linspace(z0, z1, theta.size))).T
-        self.spring_mesh = gl.GLLinePlotItem(pos=pts, width=2, color=(0.1,0.1,0.8,1))
+        self.spring_mesh = gl.GLLinePlotItem(pos=pts, width=10, color=(0.1,0.1,0.8,1))
         self.view.addItem(self.spring_mesh)
 
         # travel info
@@ -259,25 +300,32 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         """
         f = t / 100
 
-        # 1) compute current spring length
+        # Compute current spring length
         Lcurrent   = self.L0 - (self.L0 - self.Lbind) * f
         spring_z0  = self.bottom_anchor
         spring_z1  = spring_z0 + Lcurrent
 
-        # 2) regenerate the helix points & update the line
+        # Regenerate the helix points & update the line
         zs = np.linspace(spring_z0, spring_z1, self.theta.size)
         pts = np.vstack((self.spring_x, self.spring_y, zs)).T
         self.spring_mesh.setData(pos=pts)
 
-        # 3) reposition the shaft so its *bottom* rests on the spring top
+        # Reposition the shaft so its *bottom* rests on the spring top
         shaft_center = spring_z1 - self.shaft_length/2
         self.shaft_mesh.resetTransform()
         self.shaft_mesh.translate(0, 0, shaft_center)
 
-        # if self.shaft_mesh:
-            # move shaft up as damper compresses
-            # self.shaft_mesh.resetTransform()
-            #self.shaft_mesh.translate(0, 0, -self._perch * (t / 100))
+        # Update overlay text
+        self.info_label.setText(f"Coilover length: {Lcurrent:.1f} mm")
+        self.info_label.adjustSize()
+
+        # get view size
+        w = self.view.width()
+        h = self.view.height()
+        lbl_w = self.help_label.width()
+        lbl_h = self.help_label.height()
+        # center horizontally, place 10px above bottom
+        self.help_label.move((w - lbl_w)//2, h - lbl_h - 10)
 
     @staticmethod
     def make_cylinder(radius, length, sectors):
