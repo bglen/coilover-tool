@@ -17,6 +17,7 @@ Python tool for helping you set up coil-over suspension systems.
 - Calculate static ride position given corner weight, along with bump and droop travel ranges
 - Option for flat spring ends
 - Inverted damper option (mainly to visualize bump stop location)
+- Flipped damepr option (visualize body attatched to sprung mass)
 - Add threaded perch ranges to estimate ride heigh adjustment range and corresponding bump and droop travel
 - Geometry collisions (ex: helper spring perch collides with top of damper body before bump engagement)
 - Option to add threaded sleeve geometry on to damper body (mainly for coilover conversions)
@@ -25,6 +26,7 @@ Python tool for helping you set up coil-over suspension systems.
 - Option for preload adjustment
 - Calculate warnings for helper springs (fully compressed at full droop, loose main spring at some point through travel range)
 - Lower sleeve geometry for independent ride height and preload
+- option for bump spring instead of bump stop
 
 ## Install
 Clone the repository: `git clone https://github.com/bglen/coilover-tool`

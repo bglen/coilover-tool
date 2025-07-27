@@ -13,19 +13,32 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.setWindowTitle("Coilover Tool")
         self.resize(1000, 600)
 
-        # ─── Left panel: parameter inputs ────────────────────────────
+        # === Left panel: parameter inputs ===
         form = QtWidgets.QFormLayout()
         self.spring_id        = QtWidgets.QLineEdit("60")   # mm
         self.spring_wire_dia  = QtWidgets.QLineEdit("10")   # mm
         self.spring_free      = QtWidgets.QLineEdit("200")  # mm
         self.spring_rate      = QtWidgets.QLineEdit("100")  # N/mm
         self.spring_bind      = QtWidgets.QLineEdit("50")   # mm
+
         self.damper_free      = QtWidgets.QLineEdit("400")  # mm
         self.damper_compr     = QtWidgets.QLineEdit("250")  # mm
         self.damper_body_len  = QtWidgets.QLineEdit("200")  # mm
         self.damper_body_dia  = QtWidgets.QLineEdit("50")   # mm
         self.damper_shaft_dia = QtWidgets.QLineEdit("20")   # mm
+        self.body_threaded_length = QtWidgets.QLineEdit("100")   # mm
+
+        self.helper_outer_diam = QtWidgets.QLineEdit("85")
+        self.helper_inner_diam = QtWidgets.QLineEdit("64")
+        self.helper_thickness  = QtWidgets.QLineEdit("2")
+        self.helper_inner_hgt  = QtWidgets.QLineEdit("10")
+
+        self.bump_height = QtWidgets.QLineEdit("25")
+        self.bump_diam = QtWidgets.QLineEdit("50")
+        self.bump_rate = QtWidgets.QLineEdit("50")
+
         self.perch_input      = QtWidgets.QLineEdit("10")   # mm
+
         self.shaft_length     = float(self.damper_compr.text())
         self.unit = "mm"
 
@@ -92,27 +105,111 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         lbl.setObjectName("Shaft diameter")
         damper_layout.addRow(lbl,        self.damper_shaft_dia)
 
+        lbl = QtWidgets.QLabel("Body threaded length (mm):")
+        lbl.setObjectName("Body threaded length")
+        damper_layout.addRow(lbl, self.body_threaded_length)
+
         damper_group.setLayout(damper_layout)
 
-        # System
-        self.perch_input = QtWidgets.QLineEdit("10")
-        perch_label = QtWidgets.QLabel("Spring perch distance (mm):")
-        perch_label.setObjectName("Spring perch distance")
+        # Helper spring group
+        helper_group  = QtWidgets.QGroupBox("Helper spring")
+        helper_layout = QtWidgets.QFormLayout()
+
+        self.helper_chk = QtWidgets.QCheckBox("Add helper spring")
+        helper_layout.addRow(self.helper_chk)
+
+        self.helper_above = QtWidgets.QRadioButton("Above main spring")
+        self.helper_below = QtWidgets.QRadioButton("Below main spring")
+        self.helper_above.setChecked(True)
+        # self.helper_above.toggled.connect(self.helper_change) #TODO
+
+        rb_container = QtWidgets.QWidget()
+        rb_layout    = QtWidgets.QHBoxLayout(rb_container)
+        rb_layout.setContentsMargins(0,0,0,0)
+        rb_layout.addWidget(self.helper_above)
+        rb_layout.addWidget(self.helper_below)
+        helper_layout.addRow(rb_container)   # place the two buttons in one row
+
+        # Helper perch dimensions
+        lbl = QtWidgets.QLabel("Helper perch outer diameter (mm):")
+        lbl.setObjectName("Helper perch outer diameter")
+        helper_layout.addRow(lbl, self.helper_outer_diam)
+
+        lbl = QtWidgets.QLabel("Helper perch inner diameter (mm):")
+        lbl.setObjectName("Helper perch inner diameter")
+        helper_layout.addRow(lbl, self.helper_inner_diam)
+
+        lbl = QtWidgets.QLabel("Helper perch thickness (mm):")
+        lbl.setObjectName("Helper perch thickness")
+        helper_layout.addRow(lbl, self.helper_thickness)
+
+        lbl = QtWidgets.QLabel("Helper perch inner height (mm):")
+        lbl.setObjectName("Helper perch inner height")
+        helper_layout.addRow(lbl, self.helper_inner_hgt)
+
+        helper_group.setLayout(helper_layout)
+
+        # Bump stop group
+        bump_group  = QtWidgets.QGroupBox("Bump Stop")
+        bump_layout = QtWidgets.QFormLayout()
+
+        self.bump_chk = QtWidgets.QCheckBox("Add bump stop")
+        bump_layout.addRow(self.bump_chk)
+
+        self.radio_bump_ext = QtWidgets.QRadioButton("External")
+        self.radio_bump_int = QtWidgets.QRadioButton("Internal")
+        self.radio_bump_ext.setChecked(True)
+        # self.radio_bump_ext.toggled.connect(self.bump_change) #TODO
+
+        bump_rb_container = QtWidgets.QWidget()
+        bump_rb_layout    = QtWidgets.QHBoxLayout(bump_rb_container)
+        bump_rb_layout.setContentsMargins(0,0,0,0)
+        bump_rb_layout.addWidget(self.radio_bump_ext)
+        bump_rb_layout.addWidget(self.radio_bump_int)
+        bump_layout.addRow(bump_rb_container)   # place the two buttons in one row
+
+        lbl = QtWidgets.QLabel("Bump stop height (mm):")
+        lbl.setObjectName("Bump stop height")
+        bump_layout.addRow(lbl, self.bump_height)
+
+        lbl = QtWidgets.QLabel("Bump stop outer diameter (mm):")
+        lbl.setObjectName("Bump stop outer diameter")
+        bump_layout.addRow(lbl, self.bump_diam)
+
+        lbl = QtWidgets.QLabel("Bump stop spring rate (mm):")
+        lbl.setObjectName("Bump stop spring rate")
+        bump_layout.addRow(lbl, self.bump_rate)
+
+        bump_group.setLayout(bump_layout)
+
+        # Setup group
+        setup_group  = QtWidgets.QGroupBox("Setup")
+        setup_layout = QtWidgets.QFormLayout()
+
+        self.flip_damper_chk = QtWidgets.QCheckBox("Flip damper orientation")
+        setup_layout.addRow(self.flip_damper_chk)
+
+        lbl = QtWidgets.QLabel("Spring perch starting point (mm):")
+        lbl.setObjectName("Spring perch starting point")
+        setup_layout.addRow(lbl, self.perch_input)
+
+        setup_group.setLayout(setup_layout)
 
         # Assemble left‐side layout
         left_layout = QtWidgets.QVBoxLayout()
         left_layout.addWidget(settings_group)
         left_layout.addWidget(spring_group)
         left_layout.addWidget(damper_group)
+        left_layout.addWidget(helper_group)
+        left_layout.addWidget(bump_group)
+        left_layout.addWidget(setup_group)
 
-        # optional separator
+        # Separator
         separator = QtWidgets.QFrame()
         separator.setFrameShape(QtWidgets.QFrame.HLine)
         left_layout.addWidget(separator)
 
-        # perch + update button
-        left_layout.addWidget(perch_label)
-        left_layout.addWidget(self.perch_input)
+        # Update button
         update_btn = QtWidgets.QPushButton("Update View")
         update_btn.clicked.connect(self.update_view)
         left_layout.addWidget(update_btn, alignment=QtCore.Qt.AlignTop)
@@ -120,11 +217,16 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         left = QtWidgets.QWidget()
         left.setLayout(left_layout)
 
+        # Make the left scrollable
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(left)
+
         btn = QtWidgets.QPushButton("Update View")
         btn.clicked.connect(self.update_view)
         form.addRow(btn)
 
-        # ─── Right panel: 3D view ───────────────────────────────────
+        # === Right panel: 3D view ===
         self.view = gl.GLViewWidget()
         self.view.opts['lightPosition'] = (10, 10, 40)
         self.view.opts['distance'] = 600
@@ -174,7 +276,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         w.setLayout(right_panel)
         right_panel.addWidget(self.view)
         right_panel.addWidget(self.slider)
-        splitter.addWidget(left)
+        splitter.addWidget(scroll)
         splitter.addWidget(w)
         # give left:1, right:2 proportion roughly 1/3 : 2/3
         # Give right twice the stretch of left (i.e. ~2/3 of the width)
