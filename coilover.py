@@ -27,7 +27,6 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.damper_shaft_dia = QtWidgets.QLineEdit("20")   # mm
         self.perch_input      = QtWidgets.QLineEdit("10")   # mm
         self.shaft_length     = float(self.damper_compr.text())
-        self.coils = 10
         self.unit = "mm"
 
         # Settings group
@@ -133,6 +132,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         # Text Overlays
         self.info_label = QtWidgets.QLabel(self.view)
+        self.info_label.setWordWrap(True)    # allow multiple lines
         self.info_label.setStyleSheet("""
             color: white;
             background-color: rgba(0,0,0,0);
@@ -304,6 +304,36 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         mesh = gl.MeshData(vertexes=verts, faces=np.array(faces))
         return mesh
 
+    def calculate_active_coils(self, spring_rate, 
+                            wire_diameter, 
+                            inner_diameter, 
+                            shear_modulus=80000):
+        """
+        Calculate the number of active coils needed for a helical compression spring.
+
+        Parameters
+        ----------
+        spring_rate : float
+            Desired spring rate K in N/mm.
+        wire_diameter : float
+            Wire diameter d in mm.
+        inner_diameter : float
+            Inner diameter ID of the spring in mm.
+        shear_modulus : float, optional
+            Shear modulus G in N/mm² (default=80000 N/mm² for steel).
+
+        Returns
+        -------
+        float
+            Required number of active coils (n).
+        """
+        # mean coil diameter
+        D = inner_diameter + wire_diameter
+
+        # torsion‐spring formula solved for n
+        n_active = (shear_modulus * wire_diameter**4) / (8 * spring_rate * D**3)
+        return n_active    
+
     def update_view(self):
         """
         Update and render the 3D visualization
@@ -351,6 +381,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.view.addItem(self.shaft_mesh)
 
         # Create spring helix
+        self.coils = self.calculate_active_coils(50, Dwire, ID)
         theta  = np.linspace(0, 2*np.pi*self.coils, 200)
         self.spring_x = (ID/2) * np.cos(theta)
         self.spring_y = (ID/2) * np.sin(theta)
@@ -382,12 +413,10 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.view.addItem(self.spring_mesh)
 
         # Upper spring perch
-        spring_id        = float(self.spring_id.text())
         perch_clearance  = 2.0       # mm beyond spring OD
         cyl_thickness    = 5.0       # cylinder height
         cone_height      = 10.0      # cone height
-        plate_dia        = spring_id + perch_clearance
-        cyl_radius       = plate_dia/2.0
+        plate_dia        = ID + perch_clearance
 
         # remove old perch if exists
         if hasattr(self, 'upper_perch'):
@@ -395,7 +424,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         if hasattr(self, 'upper_cone'):
             self.view.removeItem(self.upper_cone)
 
-        cyl_mesh = self.make_cylinder(cyl_radius, cyl_thickness, sectors=32)
+        cyl_mesh = self.make_cylinder(plate_dia/2.0, cyl_thickness, sectors=32)
         self.upper_perch = gl.GLMeshItem(
             meshdata=cyl_mesh, smooth=True,
             color=(0.6,0.6,0.6,1),
@@ -411,8 +440,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         n_segs = 32
         angles = np.linspace(0, 2*np.pi, n_segs, endpoint=False)
         base_pts = np.vstack([
-            cyl_radius*np.cos(angles),
-            cyl_radius*np.sin(angles),
+            plate_dia/2.0*np.cos(angles),
+            plate_dia/2.0*np.sin(angles),
             np.full_like(angles, Lfree + cyl_thickness)
         ]).T
         # tip vertex
@@ -436,6 +465,27 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         )
         self.view.addItem(self.upper_cone)
 
+        # Lower spring perch
+        perch_clearance  = 2.0       # mm beyond spring OD
+        cyl_thickness    = 5.0       # cylinder height
+        cone_height      = 10.0      # cone height
+        plate_dia        = ID + perch_clearance
+
+        # remove old perch if exists
+        if hasattr(self, 'lower_perch'):
+            self.view.removeItem(self.lower_perch)
+
+        cyl_mesh = self.make_cylinder(plate_dia/2.0, cyl_thickness, sectors=32)
+        self.lower_perch = gl.GLMeshItem(
+            meshdata=cyl_mesh, smooth=True,
+            color=(0.6,0.6,0.6,1),
+            shader='shaded', glOptions='opaque', computeNormals=True
+        )
+        # center its top on spring_top_z:
+        lower_perch_z = Lbody - cyl_thickness/2.0 + perch
+        self.lower_perch.translate(0, 0, lower_perch_z)
+        self.view.addItem(self.lower_perch)
+
         # travel info
         self._perch = perch
         self.animate(self.slider.value())
@@ -449,10 +499,19 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # Compute current spring length
         Lcurrent   = self.Lfree - (self.Lfree - self.Lcompr) * f
         spring_z0  = self.bottom_anchor
+
+        # Check if spring is loose
         if Lcurrent - (self.Dwire / 2) < (self.bottom_anchor + self.L0):
             spring_z1  = Lcurrent - (self.Dwire / 2)
         else:
             spring_z1 = self.bottom_anchor + self.L0
+        spring_length = spring_z1 - spring_z0
+
+        # Check if in coil bind
+        if spring_length < self.Lbind:
+            spring_length = self.Lbind
+            spring_z1 = spring_z0 + self.Lbind
+            Lcurrent = spring_z1 + (self.Dwire / 2)
 
         # Regenerate the helix points & update the line
         zs = np.linspace(spring_z0, spring_z1, self.theta.size)
@@ -472,7 +531,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.upper_cone.translate(0, 0, (Lcurrent - self.Lfree))
 
         # Update overlay text
-        self.info_label.setText(f"Coilover length: {Lcurrent:.1f} mm")
+        self.info_label.setText(f"Coilover length: {Lcurrent:.1f} mm\nSpring length: {spring_length:.1f} mm")
         self.info_label.adjustSize()
 
         # get view size
