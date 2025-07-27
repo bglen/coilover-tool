@@ -239,6 +239,64 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             return val * 25.4  # convert inches back to mm
         return val            # already in mm
 
+    def make_spring_wire(self, path_pts, wire_radius, n_sides=8):
+        """
+        Sweeps along the spring helix to create the spring geometry
+        path_pts: (N,3) array of helix points
+        wire_radius: radius of spring wire in same units as path_pts
+        returns: MeshData for a tube
+        """
+        N = len(path_pts)
+        # Compute tangents
+        tangents = np.diff(path_pts, axis=0)
+        tangents = np.vstack([tangents, tangents[-1]])          # last tangent = previous
+        tangents /= np.linalg.norm(tangents, axis=1)[:,None]
+        
+        # Pick an arbitrary initial normal
+        #    (e.g. project world‐Z onto plane orthogonal to tangent[0])
+        #    then Gram–Schmidt to get a stable frame
+        normals = np.zeros_like(path_pts)
+        binorms = np.zeros_like(path_pts)
+        # initial:
+        arbitrary = np.array([0,0,1.0])
+        normals[0] = np.cross(tangents[0], arbitrary)
+        normals[0] = normals[0] / np.linalg.norm(normals[0])
+        binorms[0] = np.cross(tangents[0], normals[0])
+        
+        # Propagate via parallel transport (simple approach)
+        for i in range(1, N):
+            # make sure normals stay orthogonal to new tangent:
+            v = normals[i-1] - tangents[i] * np.dot(tangents[i], normals[i-1])
+            normals[i] = v / np.linalg.norm(v)
+            binorms[i] = np.cross(tangents[i], normals[i])
+        
+        # Generate circle in local frames
+        theta = np.linspace(0, 2*np.pi, n_sides, endpoint=False)
+        circle = np.vstack([np.cos(theta), np.sin(theta)]) * wire_radius  # (2, S)
+        
+        verts = []
+        faces = []
+        for i, p in enumerate(path_pts):
+            # build ring i
+            for j in range(n_sides):
+                offset = normals[i]*circle[0,j] + binorms[i]*circle[1,j]
+                verts.append(p + offset)
+        verts = np.array(verts)  # (N * S, 3)
+        
+        # Build faces by connecting ring i to i+1
+        for i in range(N-1):
+            for j in range(n_sides):
+                a = i*n_sides + j
+                b = i*n_sides + (j+1)%n_sides
+                c = (i+1)*n_sides + j
+                d = (i+1)*n_sides + (j+1)%n_sides
+                # two triangles (a, c, b) and (b, c, d)
+                faces.append([a, c, b])
+                faces.append([b, c, d])
+        
+        mesh = gl.MeshData(vertexes=verts, faces=np.array(faces))
+        return mesh
+
     def update_view(self):
         """
         Update and render the 3D visualization
@@ -285,7 +343,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         z0 = self.bottom_anchor
         z1 = z0 + self.L0
         pts = np.vstack((self.spring_x, self.spring_y, np.linspace(z0, z1, theta.size))).T
-        self.spring_mesh = gl.GLLinePlotItem(pos=pts, width=10, color=(0.1,0.1,0.8,1))
+        wire = self.make_spring_wire(pts, 5)
+        self.spring_mesh = gl.GLMeshItem(meshdata=wire, smooth=True, color=(0.1,0.1,0.8,1))
         self.view.addItem(self.spring_mesh)
 
         # travel info
@@ -308,7 +367,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # Regenerate the helix points & update the line
         zs = np.linspace(spring_z0, spring_z1, self.theta.size)
         pts = np.vstack((self.spring_x, self.spring_y, zs)).T
-        self.spring_mesh.setData(pos=pts)
+        new_wire = self.make_spring_wire(pts, 5)
+        self.spring_mesh.setMeshData(meshdata=new_wire)
 
         # Reposition the shaft so its *bottom* rests on the spring top
         shaft_center = spring_z1 - self.shaft_length/2
