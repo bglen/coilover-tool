@@ -1,0 +1,8 @@
+numpy
+PyQt5
+pyqtgraph
+PyOpenGL
+PyOpenGL_accelerate
+setuptools
+wheel
+Cython
