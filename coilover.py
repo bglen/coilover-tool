@@ -6,6 +6,10 @@ from PyQt5.QtGui import QVector3D
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 
+from mesh_utils import *
+from physics_utils import *
+from ui_panels import *
+
 class CoiloverDesigner(QtWidgets.QMainWindow):
 
     def __init__(self):
@@ -51,136 +55,30 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.unit = "mm"
 
         # Settings group
-        settings_group  = QtWidgets.QGroupBox("Settings")
-        settings_layout = QtWidgets.QHBoxLayout()
-
-        self.radio_mm = QtWidgets.QRadioButton("mm")
-        self.radio_in = QtWidgets.QRadioButton("in")
-        self.radio_mm.setChecked(True)           # default = millimeters
-        self.radio_mm.toggled.connect(self.on_unit_changed)
-
-        settings_layout.addWidget(self.radio_mm)
-        settings_layout.addWidget(self.radio_in)
-        settings_group.setLayout(settings_layout)
+        settings_group, self.radio_mm, self.radio_in = create_settings_group(self.on_unit_changed)
 
         # Spring group
-        spring_group   = QtWidgets.QGroupBox("Spring")
-        spring_layout  = QtWidgets.QFormLayout()
-
-        lbl = QtWidgets.QLabel("Inner diameter (mm):")
-        lbl.setObjectName("Inner diameter")
-        spring_layout.addRow(lbl,   self.q_spring_id)
-
-        lbl = QtWidgets.QLabel("Wire diameter (mm):")
-        lbl.setObjectName("Wire diameter")
-        spring_layout.addRow(lbl,   self.q_spring_wire_diameter)
-
-        lbl = QtWidgets.QLabel("Spring free length (mm):")
-        lbl.setObjectName("Spring free length")
-        spring_layout.addRow(lbl,      self.q_spring_free_length)
-
-        lbl = QtWidgets.QLabel("Spring Rate (N/mm):")
-        lbl.setObjectName("Spring Rate")
-        spring_layout.addRow(lbl,           self.q_spring_rate)
-
-        lbl = QtWidgets.QLabel("Length at bind (mm):")
-        lbl.setObjectName("Length at bind")
-        spring_layout.addRow(lbl,   self.q_spring_bind_length)
-
-        spring_group.setLayout(spring_layout)
+        spring_group = create_spring_group(
+            self.q_spring_id,
+            self.q_spring_wire_diameter,
+            self.q_spring_free_length,
+            self.q_spring_rate,
+            self.q_spring_bind_length)
 
         # Damper group
-        damper_group  = QtWidgets.QGroupBox("Damper")
-        damper_layout = QtWidgets.QFormLayout()
-
-        lbl = QtWidgets.QLabel("Damper free length (mm):")
-        lbl.setObjectName("Damper free length")
-        damper_layout.addRow(lbl,           self.q_damper_free_length)
-
-        lbl = QtWidgets.QLabel("Compressed length (mm):")
-        lbl.setObjectName("Compressed length")
-        damper_layout.addRow(lbl,     self.q_damper_comp_length)
-
-        lbl = QtWidgets.QLabel("Body length (mm):")
-        lbl.setObjectName("Body length")
-        damper_layout.addRow(lbl,           self.q_damper_body_length)
-
-        lbl = QtWidgets.QLabel("Body diameter (mm):")
-        lbl.setObjectName("Body diameter")
-        damper_layout.addRow(lbl,         self.q_damper_body_diameter)
-
-        lbl = QtWidgets.QLabel("Shaft diameter (mm):")
-        lbl.setObjectName("Shaft diameter")
-        damper_layout.addRow(lbl,        self.q_damper_shaft_diameter)
-
-        lbl = QtWidgets.QLabel("Body threaded length (mm):")
-        lbl.setObjectName("Body threaded length")
-        damper_layout.addRow(lbl, self.q_body_threaded_length)
-
-        damper_group.setLayout(damper_layout)
+        damper_group = create_damper_group(
+            self.q_damper_free_length,
+            self.q_damper_comp_length,
+            self.q_damper_body_length,
+            self.q_damper_body_diameter,
+            self.q_damper_shaft_diameter,
+            self.q_body_threaded_length,
+            )
 
         # Helper spring group
-        helper_group  = QtWidgets.QGroupBox("Helper spring")
-        helper_layout = QtWidgets.QFormLayout()
-
-        self.helper_chk = QtWidgets.QCheckBox("Add helper spring")
-        helper_layout.addRow(self.helper_chk)
-        self.helper_chk.toggled.connect(self.on_helper_toggled)
-
-        self.helper_above = QtWidgets.QRadioButton("Above main spring")
-        self.helper_below = QtWidgets.QRadioButton("Below main spring")
-        self.helper_above.setChecked(True)
-        # self.helper_above.toggled.connect(self.helper_change) #TODO
-
-        rb_container = QtWidgets.QWidget()
-        rb_layout    = QtWidgets.QHBoxLayout(rb_container)
-        rb_layout.setContentsMargins(0,0,0,0)
-        rb_layout.addWidget(self.helper_above)
-        rb_layout.addWidget(self.helper_below)
-        helper_layout.addRow(rb_container)   # place the two buttons in one row
-
-        # Helper perch dimensions
-        lbl = QtWidgets.QLabel("Helper perch outer diameter (mm):")
-        lbl.setObjectName("Helper perch outer diameter")
-        helper_layout.addRow(lbl, self.q_helper_outer_diameter)
-
-        lbl = QtWidgets.QLabel("Helper perch inner diameter (mm):")
-        lbl.setObjectName("Helper perch inner diameter")
-        helper_layout.addRow(lbl, self.q_helper_inner_diameter)
-
-        lbl = QtWidgets.QLabel("Helper perch thickness (mm):")
-        lbl.setObjectName("Helper perch thickness")
-        helper_layout.addRow(lbl, self.q_helper_thickness)
-
-        lbl = QtWidgets.QLabel("Helper perch inner height (mm):")
-        lbl.setObjectName("Helper perch inner height")
-        helper_layout.addRow(lbl, self.q_helper_inner_height)
-
-        # Helper spring dimensions
-
-        lbl = QtWidgets.QLabel("Helper spring inner diameter (mm):")
-        lbl.setObjectName("Helper spring inner diameter")
-        helper_layout.addRow(lbl, self.q_helper_spring_id)
-
-        lbl = QtWidgets.QLabel("Helper spring outer diameter (mm):")
-        lbl.setObjectName("Helper spring inner diameter")
-        helper_layout.addRow(lbl, self.q_helper_spring_od)
-
-        lbl = QtWidgets.QLabel("Helper spring free length (mm):")
-        lbl.setObjectName("Helper spring free length")
-        helper_layout.addRow(lbl, self.q_helper_spring_free_length)
-
-        lbl = QtWidgets.QLabel("Helper spring rate (N/mm):")
-        lbl.setObjectName("Helper spring rate")
-        helper_layout.addRow(lbl, self.q_helper_spring_rate)
-
-        lbl = QtWidgets.QLabel("Length at bind (mm):")
-        lbl.setObjectName("Length at bind")
-        helper_layout.addRow(lbl, self.q_helper_spring_bind_length)
-
-        for w in (
-            self.helper_above,
-            self.helper_below,
+        helper_group, self.helper_chk, self.helper_above, self.helper_below = create_helper_spring_group(
+            self.on_helper_toggled,
+            self.use_helper,
             self.q_helper_outer_diameter,
             self.q_helper_inner_diameter,
             self.q_helper_thickness,
@@ -189,67 +87,20 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.q_helper_spring_od,
             self.q_helper_spring_free_length,
             self.q_helper_spring_rate,
-            self.q_helper_spring_bind_length
-        ):
-            w.setEnabled(self.use_bump)
-
-        helper_group.setLayout(helper_layout)
+            self.q_helper_spring_bind_length,
+            )
 
         # Bump stop group
-        bump_group  = QtWidgets.QGroupBox("Bump Stop")
-        bump_layout = QtWidgets.QFormLayout()
-
-        self.bump_chk = QtWidgets.QCheckBox("Add bump stop")
-        bump_layout.addRow(self.bump_chk)
-        self.bump_chk.toggled.connect(self.on_bump_toggled)
-
-        self.radio_bump_ext = QtWidgets.QRadioButton("External")
-        self.radio_bump_int = QtWidgets.QRadioButton("Internal")
-        self.radio_bump_ext.setChecked(True)
-        # self.radio_bump_ext.toggled.connect(self.bump_change) #TODO
-
-        bump_rb_container = QtWidgets.QWidget()
-        bump_rb_layout    = QtWidgets.QHBoxLayout(bump_rb_container)
-        bump_rb_layout.setContentsMargins(0,0,0,0)
-        bump_rb_layout.addWidget(self.radio_bump_ext)
-        bump_rb_layout.addWidget(self.radio_bump_int)
-        bump_layout.addRow(bump_rb_container)   # place the two buttons in one row
-
-        lbl = QtWidgets.QLabel("Bump stop height (mm):")
-        lbl.setObjectName("Bump stop height")
-        bump_layout.addRow(lbl, self.q_bump_height)
-
-        lbl = QtWidgets.QLabel("Bump stop outer diameter (mm):")
-        lbl.setObjectName("Bump stop outer diameter")
-        bump_layout.addRow(lbl, self.q_bump_diameter)
-
-        lbl = QtWidgets.QLabel("Bump stop spring rate (mm):")
-        lbl.setObjectName("Bump stop spring rate")
-        bump_layout.addRow(lbl, self.q_bump_rate)
-
-        for w in (
-            self.radio_bump_ext,
-            self.radio_bump_int,
+        bump_group, self.bump_chk, self.radio_bump_ext, self.radio_bump_int = create_bump_stop_group(
+            self.on_bump_toggled,
+            self.use_bump,
             self.q_bump_height,
             self.q_bump_diameter,
-            self.q_bump_rate,
-        ):
-            w.setEnabled(self.use_bump)
-
-        bump_group.setLayout(bump_layout)
+            self.q_bump_rate
+            )
 
         # Setup group
-        setup_group  = QtWidgets.QGroupBox("Setup")
-        setup_layout = QtWidgets.QFormLayout()
-
-        self.flip_damper_chk = QtWidgets.QCheckBox("Flip damper orientation")
-        setup_layout.addRow(self.flip_damper_chk)
-
-        lbl = QtWidgets.QLabel("Spring perch starting point (mm):")
-        lbl.setObjectName("Spring perch starting point")
-        setup_layout.addRow(lbl, self.q_lower_perch_position)
-
-        setup_group.setLayout(setup_layout)
+        setup_group, self.flip_damper_chk = create_setup_group(self.q_lower_perch_position)
 
         # Assemble left‐side layout
         left_layout = QtWidgets.QVBoxLayout()
@@ -450,154 +301,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         val = float(widget.text())
         if self.unit == "in":
             return val * 25.4  # convert inches back to mm
-        return val            # already in mm
-
-    def make_annular_cylinder(self, outer_r, inner_r, height, sectors=32):
-        """
-        Returns a MeshData for a flat ring (outer radius outer_r, inner radius inner_r)
-        of thickness `height` centered on z=0.
-        """
-        # angles for your circle
-        theta = np.linspace(0, 2*np.pi, sectors, endpoint=False)
-        cos, sin = np.cos(theta), np.sin(theta)
-
-        # top & bottom rings: outer & inner
-        top_outer    = np.column_stack([outer_r*cos,        outer_r*sin,        np.full(sectors,  height/2)])
-        bot_outer    = np.column_stack([outer_r*cos,        outer_r*sin,        np.full(sectors, -height/2)])
-        top_inner    = np.column_stack([inner_r*cos,        inner_r*sin,        np.full(sectors,  height/2)])
-        bot_inner    = np.column_stack([inner_r*cos,        inner_r*sin,        np.full(sectors, -height/2)])
-
-        verts = np.vstack([top_outer, bot_outer, top_inner, bot_inner])
-        faces = []
-
-        # helper to index sections
-        O  = 0
-        B  = sectors
-        I  = 2*sectors
-        BI = 3*sectors
-
-        # outer wall
-        for i in range(sectors):
-            a = O + i
-            b = O + (i+1)%sectors
-            c = B + i
-            d = B + (i+1)%sectors
-            faces += [[a, c, b], [b, c, d]]
-
-        # inner wall (flip winding so normals point inward)
-        for i in range(sectors):
-            a = I + i
-            b = I + (i+1)%sectors
-            c = BI + i
-            d = BI + (i+1)%sectors
-            faces += [[c, a, b], [b, d, c]]
-
-        # top face (between outer & inner)
-        for i in range(sectors):
-            a = O + i
-            b = O + (i+1)%sectors
-            c = I + i
-            d = I + (i+1)%sectors
-            faces += [[a, b, c], [b, d, c]]
-
-        # bottom face
-        for i in range(sectors):
-            a = B + i
-            b = B + (i+1)%sectors
-            c = BI + i
-            d = BI + (i+1)%sectors
-            faces += [[b, a, c], [a, d, c]]
-
-        return gl.MeshData(vertexes=verts, faces=np.array(faces))
-
-
-    def make_spring_wire(self, path_pts, wire_radius, n_sides=8):
-        """
-        Sweeps along the spring helix to create the spring geometry
-        path_pts: (N,3) array of helix points
-        wire_radius: radius of spring wire in same units as path_pts
-        returns: MeshData for a tube
-        """
-        N = len(path_pts)
-        # Compute tangents
-        tangents = np.diff(path_pts, axis=0)
-        tangents = np.vstack([tangents, tangents[-1]])          # last tangent = previous
-        tangents /= np.linalg.norm(tangents, axis=1)[:,None]
-        
-        # Pick an arbitrary initial normal
-        #    (e.g. project world‐Z onto plane orthogonal to tangent[0])
-        #    then Gram–Schmidt to get a stable frame
-        normals = np.zeros_like(path_pts)
-        binorms = np.zeros_like(path_pts)
-        # initial:
-        arbitrary = np.array([0,0,1.0])
-        normals[0] = np.cross(tangents[0], arbitrary)
-        normals[0] = normals[0] / np.linalg.norm(normals[0])
-        binorms[0] = np.cross(tangents[0], normals[0])
-        
-        # Propagate via parallel transport (simple approach)
-        for i in range(1, N):
-            # make sure normals stay orthogonal to new tangent:
-            v = normals[i-1] - tangents[i] * np.dot(tangents[i], normals[i-1])
-            normals[i] = v / np.linalg.norm(v)
-            binorms[i] = np.cross(tangents[i], normals[i])
-        
-        # Generate circle in local frames
-        theta = np.linspace(0, 2*np.pi, n_sides, endpoint=False)
-        circle = np.vstack([np.cos(theta), np.sin(theta)]) * wire_radius  # (2, S)
-        
-        verts = []
-        faces = []
-        for i, p in enumerate(path_pts):
-            # build ring i
-            for j in range(n_sides):
-                offset = normals[i]*circle[0,j] + binorms[i]*circle[1,j]
-                verts.append(p + offset)
-        verts = np.array(verts)  # (N * S, 3)
-        
-        # Build faces by connecting ring i to i+1
-        for i in range(N-1):
-            for j in range(n_sides):
-                a = i*n_sides + j
-                b = i*n_sides + (j+1)%n_sides
-                c = (i+1)*n_sides + j
-                d = (i+1)*n_sides + (j+1)%n_sides
-                # two triangles (a, c, b) and (b, c, d)
-                faces.append([a, c, b])
-                faces.append([b, c, d])
-        
-        mesh = gl.MeshData(vertexes=verts, faces=np.array(faces))
-        return mesh
-
-    def calculate_active_coils(self, spring_rate, 
-                            wire_diameter, 
-                            inner_diameter, 
-                            shear_modulus=80000):
-        """
-        Calculate the number of active coils needed for a helical compression spring.
-
-        Parameters
-        ----------
-        spring_rate : float
-            Desired spring rate K in N/mm.
-        wire_diameter : float
-            Wire diameter d in mm.
-        inner_diameter : float
-            Inner diameter ID of the spring in mm.
-        shear_modulus : float, optional
-            Shear modulus G in N/mm² (default=80000 N/mm² for steel).
-
-        Returns
-        -------
-        float
-            Required number of active coils (n).
-        """
-        # mean coil diameter
-        D = inner_diameter + wire_diameter
-
-        # torsion‐spring formula solved for n
-        n_active = (shear_modulus * wire_diameter**4) / (8 * spring_rate * D**3)
-        return n_active    
+        return val            # already in mm   
 
     def update_view(self):
         """
@@ -630,7 +334,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             if item: self.view.removeItem(item)
 
         # Create damper body
-        cyl = self.make_cylinder(self.damper_body_diameter/2, self.damper_body_length, 32)
+        cyl = make_cylinder(self.damper_body_diameter/2, self.damper_body_length, 32)
         self.body_mesh = gl.GLMeshItem(
             meshdata=cyl,
             smooth=True, 
@@ -643,7 +347,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.view.addItem(self.body_mesh)
 
         # Create damper shaft
-        shaft = self.make_cylinder(self.damper_shaft_diameter/2, self.shaft_length, 16)
+        shaft = make_cylinder(self.damper_shaft_diameter/2, self.shaft_length, 16)
         self.shaft_mesh = gl.GLMeshItem(
             meshdata=shaft,
             smooth=True,
@@ -656,7 +360,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.view.addItem(self.shaft_mesh)
 
         # Create main spring helix
-        self.coils = self.calculate_active_coils(50, self.spring_wire_diameter, self.spring_id)
+        self.coils = calculate_active_coils(50, self.spring_wire_diameter, self.spring_id)
         theta  = np.linspace(0, 2*np.pi*self.coils, 200)
         self.spring_x = (self.spring_id/2) * np.cos(theta)
         self.spring_y = (self.spring_id/2) * np.sin(theta)
@@ -666,7 +370,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         z0 = self.spring_bottom_position
         z1 = z0 + self.spring_free_length
         pts = np.vstack((self.spring_x, self.spring_y, np.linspace(z0, z1, theta.size))).T
-        wire = self.make_spring_wire(pts, self.spring_wire_diameter/2)
+        wire = make_spring_wire(pts, self.spring_wire_diameter/2)
         self.spring_mesh = gl.GLMeshItem(
             meshdata=wire,
             smooth=True,
@@ -678,7 +382,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.view.addItem(self.spring_mesh)
 
         # Create helper spring helix
-        self.helper_coils = self.calculate_active_coils(50, self.spring_wire_diameter, self.spring_id) #TODO calculate for flat wire cross section
+        self.helper_coils = calculate_active_coils(50, self.spring_wire_diameter, self.spring_id) #TODO calculate for flat wire cross section
         theta  = np.linspace(0, 2*np.pi*self.coils, 200)
         self.spring_x = (self.spring_id/2) * np.cos(theta)
         self.spring_y = (self.spring_id/2) * np.sin(theta)
@@ -688,7 +392,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         z0 = self.spring_bottom_position
         z1 = z0 + self.spring_free_length
         pts = np.vstack((self.spring_x, self.spring_y, np.linspace(z0, z1, theta.size))).T
-        wire = self.make_spring_wire(pts, self.spring_wire_diameter/2)
+        wire = make_spring_wire(pts, self.spring_wire_diameter/2)
         self.spring_mesh = gl.GLMeshItem(
             meshdata=wire,
             smooth=True,
@@ -705,7 +409,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         cone_height      = 10.0      # cone height
         plate_dia        = self.spring_id + perch_clearance
 
-        cyl_mesh = self.make_cylinder(plate_dia/2.0, cyl_thickness, sectors=32)
+        cyl_mesh = make_cylinder(plate_dia/2.0, cyl_thickness, sectors=32)
         self.upper_perch = gl.GLMeshItem(
             meshdata=cyl_mesh, smooth=True,
             color=(1.0, 0.5, 0.0, 1.0),
@@ -756,7 +460,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         if hasattr(self, 'lower_perch'):
             self.view.removeItem(self.lower_perch)
 
-        cyl_mesh = self.make_cylinder(plate_dia/2.0, cyl_thickness, sectors=32)
+        cyl_mesh = make_cylinder(plate_dia/2.0, cyl_thickness, sectors=32)
         self.lower_perch = gl.GLMeshItem(
             meshdata=cyl_mesh, smooth=True,
             color=(0.0, 0.7, 1.0, 1.0),
@@ -773,8 +477,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.view.removeItem(self.helper_perch)
 
         # --- build the two annular meshes ---
-        md1 = self.make_annular_cylinder(self.helper_outer_diameter / 2,   self.helper_inner_diameter / 2, self.helper_thickness, sectors=64)
-        md2 = self.make_annular_cylinder(self.helper_inner_diameter / 2, hole_r, self.helper_inner_height, sectors=64)
+        md1 = make_annular_cylinder(self.helper_outer_diameter / 2,   self.helper_inner_diameter / 2, self.helper_thickness, sectors=64)
+        md2 = make_annular_cylinder(self.helper_inner_diameter / 2, hole_r, self.helper_inner_height, sectors=64)
 
         # --- merge them into one mesh ---
         v1, f1 = md1.vertexes(), md1.faces()
@@ -822,7 +526,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # Regenerate the helix points & update the line
         zs = np.linspace(self.spring_bottom_position, self.spring_upper_position, self.theta.size)
         pts = np.vstack((self.spring_x, self.spring_y, zs)).T
-        new_wire = self.make_spring_wire(pts, self.spring_wire_diameter/2)
+        new_wire = make_spring_wire(pts, self.spring_wire_diameter/2)
         self.spring_mesh.setMeshData(meshdata=new_wire)
 
         # Move the shaft so its bottom rests on the spring top
@@ -852,25 +556,6 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         lbl_h = self.help_label.height()
         # center horizontally, place 10px above bottom
         self.help_label.move((w - lbl_w)//2, h - lbl_h - 10)
-
-    @staticmethod
-    def make_cylinder(radius, length, sectors):
-        """Returns a MeshData cylinder aligned along z."""
-        theta = np.linspace(0, 2*np.pi, sectors)
-        xs, ys = np.cos(theta)*radius, np.sin(theta)*radius
-        # top and bottom circles
-        top    = np.vstack([xs, ys, np.full_like(xs, length/2)]).T
-        bottom = np.vstack([xs, ys, np.full_like(xs, -length/2)]).T
-        faces = []
-        verts = np.vstack([top, bottom])
-        # side faces
-        for i in range(sectors-1):
-            faces.append([i, i+1, sectors + i])
-            faces.append([i+1, sectors+1 + i, sectors + i])
-        # close the loop
-        faces.append([sectors-1, 0, 2*sectors-1])
-        faces.append([0, sectors, 2*sectors-1])
-        return gl.MeshData(vertexes=verts, faces=np.array(faces))
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
