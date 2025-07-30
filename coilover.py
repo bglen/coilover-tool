@@ -21,11 +21,11 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         form = QtWidgets.QFormLayout()
 
         # text field variables
-        self.q_spring_id                    = QtWidgets.QLineEdit("60")   # mm
-        self.q_spring_wire_diameter         = QtWidgets.QLineEdit("10")   # mm
-        self.q_spring_free_length           = QtWidgets.QLineEdit("200")  # mm
-        self.q_spring_rate                  = QtWidgets.QLineEdit("100")  # N/mm
-        self.q_spring_bind_length           = QtWidgets.QLineEdit("50")   # mm
+        self.q_spring_id                    = QtWidgets.QLineEdit("63.5")   # mm
+        self.q_spring_wire_diameter         = QtWidgets.QLineEdit("9.6")   # mm
+        self.q_spring_free_length           = QtWidgets.QLineEdit("101.6")  # mm
+        self.q_spring_rate                  = QtWidgets.QLineEdit("70.04")  # N/mm
+        self.q_spring_bind_length           = QtWidgets.QLineEdit("33.83")   # mm
 
         self.q_damper_free_length           = QtWidgets.QLineEdit("400")  # mm
         self.q_damper_comp_length           = QtWidgets.QLineEdit("250")  # mm
@@ -37,8 +37,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.use_helper = 0
         self.q_helper_outer_diameter        = QtWidgets.QLineEdit("85")
         self.q_helper_inner_diameter        = QtWidgets.QLineEdit("64")
-        self.q_helper_thickness             = QtWidgets.QLineEdit("2")
-        self.q_helper_inner_height          = QtWidgets.QLineEdit("10")
+        self.q_helper_thickness             = QtWidgets.QLineEdit("2.5")
+        self.q_helper_inner_height          = QtWidgets.QLineEdit("13")
         self.q_helper_spring_id             = QtWidgets.QLineEdit("57.15") # mm
         self.q_helper_spring_od             = QtWidgets.QLineEdit("73.91") # mm
         self.q_helper_spring_free_length    = QtWidgets.QLineEdit("101.6") # mm
@@ -51,6 +51,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.q_bump_rate                    = QtWidgets.QLineEdit("50")
 
         self.q_lower_perch_position         = QtWidgets.QLineEdit("10")   # mm
+        # 87 mm diameter perch
 
         self.unit = "mm"
 
@@ -196,6 +197,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.shaft_mesh  = None
         self.upper_perch = None
         self.upper_cone  = None
+        self.helper_spring_mesh = None
 
         # Have the camera center on the top of the damper body
         self.view.opts['center'] = QVector3D(0, 0, self.read_length(self.q_damper_body_length))
@@ -308,29 +310,39 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         Update and render the 3D visualization
         """
         # Input values
-        self.spring_id      = self.read_length(self.q_spring_id)
-        self.spring_wire_diameter   = self.read_length(self.q_spring_wire_diameter)
-        self.spring_free_length      = self.read_length(self.q_spring_free_length)
-        self.spring_bind_length   = self.read_length(self.q_spring_bind_length)
-        self.damper_body_diameter   = self.read_length(self.q_damper_body_diameter)
-        self.damper_body_length   = self.read_length(self.q_damper_body_length)
-        self.damper_shaft_diameter  = self.read_length(self.q_damper_shaft_diameter)
-        self.lower_perch_position   = self.read_length(self.q_lower_perch_position)
-        self.damper_free_length   = self.read_length(self.q_damper_free_length)
-        self.damper_comp_length  = self.read_length(self.q_damper_comp_length)
-        self.helper_thickness   = self.read_length(self.q_helper_thickness)
-        self.helper_outer_diameter   = self.read_length(self.q_helper_outer_diameter)
-        self.helper_inner_diameter  = self.read_length(self.q_helper_inner_diameter)
-        self.helper_inner_height   = self.read_length(self.q_helper_inner_height)
+        self.spring_id = self.read_length(self.q_spring_id)
+        self.spring_wire_diameter = self.read_length(self.q_spring_wire_diameter)
+        self.spring_free_length = self.read_length(self.q_spring_free_length)
+        self.spring_bind_length = self.read_length(self.q_spring_bind_length)
+        self.spring_rate = self.read_length(self.q_spring_rate)
+        self.damper_body_diameter = self.read_length(self.q_damper_body_diameter)
+        self.damper_body_length = self.read_length(self.q_damper_body_length)
+        self.damper_shaft_diameter = self.read_length(self.q_damper_shaft_diameter)
+        self.lower_perch_position = self.read_length(self.q_lower_perch_position)
+        self.damper_free_length = self.read_length(self.q_damper_free_length)
+        self.damper_comp_length = self.read_length(self.q_damper_comp_length)
+        self.helper_thickness = self.read_length(self.q_helper_thickness)
+        self.helper_outer_diameter = self.read_length(self.q_helper_outer_diameter)
+        self.helper_inner_diameter = self.read_length(self.q_helper_inner_diameter)
+        self.helper_inner_height = self.read_length(self.q_helper_inner_height)
+        self.helper_spring_id = self.read_length(self.q_helper_spring_id)
+        self.helper_spring_od = self.read_length(self.q_helper_spring_od)
+        self.helper_spring_free_length = self.read_length(self.q_helper_spring_free_length)
+        self.helper_spring_rate = self.read_length(self.q_helper_spring_rate)
+        self.helper_spring_bind_length = self.read_length(self.q_helper_spring_bind_length)
 
-        # Calculate values
-        self.spring_bottom_position = self.damper_body_length + self.lower_perch_position + self.spring_wire_diameter/2 # Z coordinate where spring’s bottom sits
-        self.spring_upper_position = -min(self.spring_free_length - self.spring_bind_length, self.spring_free_length) # Z coordinate where spring’s top sits
         self.shaft_length = self.damper_comp_length #TODO fix this simplificiation
         hole_r = (self.read_length(self.q_helper_inner_diameter) - 2 * self.helper_thickness) / 2.0 # second ring’s hole radius:
 
         # Clear old mesh geometry
-        for item in [self.spring_mesh, self.body_mesh, self.shaft_mesh, self.upper_perch, self.upper_cone]:
+        for item in [
+            self.spring_mesh,
+            self.body_mesh,
+            self.shaft_mesh,
+            self.upper_perch,
+            self.upper_cone,
+            self.helper_spring_mesh
+            ]:
             if item: self.view.removeItem(item)
 
         # Create damper body
@@ -362,14 +374,14 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # Create main spring helix
         self.coils = calculate_active_coils(50, self.spring_wire_diameter, self.spring_id)
         theta  = np.linspace(0, 2*np.pi*self.coils, 200)
-        self.spring_x = (self.spring_id/2) * np.cos(theta)
-        self.spring_y = (self.spring_id/2) * np.sin(theta)
-        self.theta    = theta
+        self.spring_x = ((self.spring_id + self.spring_wire_diameter)/2) * np.cos(theta)
+        self.spring_y = ((self.spring_id + self.spring_wire_diameter)/2) * np.sin(theta)
+        self.main_theta = theta
 
         # Create main spring geometry
-        z0 = self.spring_bottom_position
-        z1 = z0 + self.spring_free_length
-        pts = np.vstack((self.spring_x, self.spring_y, np.linspace(z0, z1, theta.size))).T
+        self.spring_bottom_position = self.damper_body_length + self.lower_perch_position + self.spring_wire_diameter / 2 # Z coordinate where the bottom spring wire's center sits
+        self.spring_upper_position = self.spring_bottom_position + self.spring_free_length - self.spring_wire_diameter # Z coordinate where the top spring wire's center sits
+        pts = np.vstack((self.spring_x, self.spring_y, np.linspace(self.spring_bottom_position, self.spring_upper_position, self.main_theta.size))).T
         wire = make_spring_wire(pts, self.spring_wire_diameter/2)
         self.spring_mesh = gl.GLMeshItem(
             meshdata=wire,
@@ -382,18 +394,27 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.view.addItem(self.spring_mesh)
 
         # Create helper spring helix
-        self.helper_coils = calculate_active_coils(50, self.spring_wire_diameter, self.spring_id) #TODO calculate for flat wire cross section
-        theta  = np.linspace(0, 2*np.pi*self.coils, 200)
-        self.spring_x = (self.spring_id/2) * np.cos(theta)
-        self.spring_y = (self.spring_id/2) * np.sin(theta)
-        self.theta    = theta
+        self.helper_wire_width = (self.helper_outer_diameter - self.helper_inner_diameter) / 2
+        self.helper_coils, self.helper_wire_height = calculate_active_coils_rectangular(
+            spring_rate=self.helper_spring_rate,
+            inner_diameter=self.helper_inner_diameter,
+            outer_diameter=self.helper_outer_diameter,
+            shear_modulus=80e3,
+            wire_width=self.helper_wire_width,
+            solid_height=self.helper_spring_bind_length
+        )
+        self.helper_spring_lower_position = self.spring_upper_position + self.spring_wire_diameter / 2 + self.helper_thickness + self.helper_wire_height / 2 # Z coordinate where the bottom spring wire's center sits
+        self.helper_spring_upper_position = self.helper_spring_lower_position + self.helper_spring_free_length - self.helper_wire_height # Z coordinate where the top spring wire's center sits
+        theta  = np.linspace(0, 2 * np.pi * self.helper_coils, 200)
+        r = (self.helper_inner_diameter + self.helper_wire_width) / 2
+        self.helper_spring_x = r * np.cos(theta)
+        self.helper_spring_y = r * np.sin(theta)
+        self.helper_theta = theta
 
         # Create helper spring geometry
-        z0 = self.spring_bottom_position
-        z1 = z0 + self.spring_free_length
-        pts = np.vstack((self.spring_x, self.spring_y, np.linspace(z0, z1, theta.size))).T
-        wire = make_spring_wire(pts, self.spring_wire_diameter/2)
-        self.spring_mesh = gl.GLMeshItem(
+        pts = np.vstack((self.helper_spring_x, self.helper_spring_y, np.linspace(self.helper_spring_lower_position, self.helper_spring_upper_position, self.helper_theta.size))).T
+        wire = make_rectangular_spring_wire(pts, self.helper_wire_width, self.helper_wire_height)
+        self.helper_spring_mesh = gl.GLMeshItem(
             meshdata=wire,
             smooth=True,
             color=(0.1,0.1,0.8,1),
@@ -401,7 +422,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             glOptions='opaque',      # so it renders solid faces
             computeNormals=True      # auto-generate normals from faces
             )
-        self.view.addItem(self.spring_mesh)
+        self.view.addItem(self.helper_spring_mesh)
 
         # Upper spring perch
         perch_clearance  = 2.0       # mm beyond spring OD
@@ -503,50 +524,70 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
     def animate(self, t):
         """
-        t = 0..100 slider: moves spring + shaft
+        t = 0 to 100 slider: moves spring + shaft
         """
+        
         f = t / 100
 
-        # Compute current spring length
-        self.shaft_upper_position   = self.damper_free_length - (self.damper_free_length - self.damper_comp_length) * f
+        # Calculate minimum allowable shaft position
+        min_shaft_position = max(self.damper_comp_length, (self.spring_bottom_position - self.spring_wire_diameter / 2 + self.spring_bind_length + self.helper_spring_bind_length + self.helper_thickness))
 
-        # Check if spring is loose
-        if self.shaft_upper_position - (self.spring_wire_diameter / 2) < (self.spring_bottom_position + self.spring_free_length):
-            self.spring_upper_position  = self.shaft_upper_position - (self.spring_wire_diameter / 2)
-        else:
-            self.spring_upper_position = self.spring_bottom_position + self.spring_free_length
-        spring_length = self.spring_upper_position - self.spring_bottom_position
+        # Compute the damper length given the slider position
+        self.shaft_upper_position   = self.damper_free_length - (self.damper_free_length - min_shaft_position) * f
 
-        # Check if in coil bind
-        if spring_length < self.spring_bind_length:
-            spring_length = self.spring_bind_length
-            self.spring_upper_position = self.spring_bottom_position + self.spring_bind_length
-            self.shaft_upper_position = self.spring_upper_position + (self.spring_wire_diameter / 2)
+        # Calculate the available room between the perches
+        available_length = self.shaft_upper_position - (self.spring_bottom_position - self.spring_wire_diameter / 2) - self.helper_thickness
 
-        # Regenerate the helix points & update the line
-        zs = np.linspace(self.spring_bottom_position, self.spring_upper_position, self.theta.size)
+        # Calculate the spring lengths and total force
+        spring_length, helper_spring_length, spring_force = split_strut_length_to_springs(
+            self.spring_rate,
+            self.helper_spring_rate,
+            available_length,
+            self.spring_bind_length,
+            self.helper_spring_bind_length,
+            self.spring_free_length,
+            self.helper_spring_free_length
+        )
+
+        # Calculate the spring wire positions and the helper perch position
+        self.spring_upper_position = self.spring_bottom_position + (spring_length - self.spring_wire_diameter)
+        self.helper_perch_position = self.spring_upper_position + self.spring_wire_diameter / 2 + self.helper_thickness / 2
+        self.helper_spring_lower_position = self.helper_perch_position + self.helper_thickness / 2 + self.helper_wire_height / 2
+        self.helper_spring_upper_position = self.helper_spring_lower_position + (helper_spring_length - self.helper_wire_height)
+
+        # Regenerate the main spring helix
+        zs = np.linspace(self.spring_bottom_position, self.spring_upper_position, self.main_theta.size)
         pts = np.vstack((self.spring_x, self.spring_y, zs)).T
         new_wire = make_spring_wire(pts, self.spring_wire_diameter/2)
         self.spring_mesh.setMeshData(meshdata=new_wire)
 
-        # Move the shaft so its bottom rests on the spring top
+        # Regenerate the helper spring helix
+        zs = np.linspace(self.helper_spring_lower_position, self.helper_spring_upper_position, self.helper_theta.size)
+        pts = np.vstack((self.helper_spring_x, self.helper_spring_y, zs)).T
+        new_wire = make_rectangular_spring_wire(pts, self.helper_wire_width, self.helper_wire_height)
+        self.helper_spring_mesh.setMeshData(meshdata=new_wire)
+
+        # Move the damper shaft
         shaft_center = self.shaft_upper_position - self.shaft_length/2
         self.shaft_mesh.resetTransform()
         self.shaft_mesh.translate(0, 0, shaft_center)
 
         # Move upper spring perch
         self.upper_perch.resetTransform()
-        self.upper_perch.translate(0, 0, self.shaft_upper_position + 2.5)
+        self.upper_perch.translate(0, 0, self.shaft_upper_position + 2.5) # TODO: add inputs for perch geometries
         self.upper_cone.resetTransform()
         self.upper_cone.translate(0, 0, (self.shaft_upper_position - self.damper_free_length))
 
         # Move helper perch
         self.helper_perch.resetTransform()
-        self.helper_perch.translate(0, 0, (self.spring_upper_position + (self.spring_wire_diameter / 2) + (self.helper_thickness / 2)))
-
+        self.helper_perch.translate(0, 0, self.helper_perch_position)
 
         # Update overlay text
-        self.info_label.setText(f"Coilover length: {self.shaft_upper_position:.1f} mm\nSpring length: {spring_length:.1f} mm")
+        self.info_label.setText(f"Coilover length: {self.shaft_upper_position:.1f} mm\n" + 
+                                f"Availible length: {available_length:.1f} mm\n" +
+                                f"Main Spring length: {spring_length:.1f} mm\n" +
+                                f"Helper Spring length: {helper_spring_length:.1f} mm\n" + 
+                                f"Spring Force: {spring_force:.1f} N\n")
         self.info_label.adjustSize()
 
         # get view size
@@ -556,7 +597,6 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         lbl_h = self.help_label.height()
         # center horizontally, place 10px above bottom
         self.help_label.move((w - lbl_w)//2, h - lbl_h - 10)
-
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     win = CoiloverDesigner()

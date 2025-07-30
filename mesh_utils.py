@@ -115,3 +115,65 @@ def make_spring_wire(path_pts, wire_radius, n_sides=8):
         
         mesh = gl.MeshData(vertexes=verts, faces=np.array(faces))
         return mesh
+
+def make_rectangular_spring_wire(path_pts, wire_width, wire_height):
+    """
+    Sweeps along the spring helix to create a rectangular-wire spring
+    whose cross-section remains upright (parallel to XY ground plane).
+
+    path_pts: (N,3) array of helix centerline points
+    wire_width: width of the rectangular cross-section (radial direction)
+    wire_height: height of the rectangular cross-section (vertical)
+    returns: MeshData for a rectangular prism sweep
+    """
+    # we only need tangents; normals/binorms no longer used for section orientation
+    tangents, _, _ = compute_frames(path_pts)
+
+    # Predefine the 4 local corner offsets in (radial, vertical) coords
+    local_corners = [
+        (+wire_width/2, +wire_height/2),
+        (-wire_width/2, +wire_height/2),
+        (-wire_width/2, -wire_height/2),
+        (+wire_width/2, -wire_height/2),
+    ]
+
+    verts = []
+    faces = []
+    global_up = np.array([0.0, 0.0, 1.0])
+
+    # Build vertices
+    for i, p in enumerate(path_pts):
+        t = tangents[i]
+        # radial axis: perpendicular to both tangent and up
+        r = np.cross(global_up, t)
+        norm_r = np.linalg.norm(r)
+        if norm_r < 1e-6:
+            # tangent is nearly vertical → choose arbitrary horizontal axis
+            r = np.array([1.0, 0.0, 0.0])
+        else:
+            r /= norm_r
+
+        # vertical axis in the plane normal to tangent
+        v = np.cross(t, r)
+        v /= np.linalg.norm(v)
+
+        # place each corner
+        for (wx, hy) in local_corners:
+            offset = r * wx + v * hy
+            verts.append(p + offset)
+
+    verts = np.array(verts)  # shape (N*4, 3)
+
+    # Build faces by connecting quads between successive sections
+    n_sections = len(path_pts)
+    for i in range(n_sections - 1):
+        for j in range(4):
+            a =  i*4 + j
+            b =  i*4 + (j + 1) % 4
+            c = (i+1)*4 + j
+            d = (i+1)*4 + (j + 1) % 4
+            # two triangles per quad
+            faces.append([a, c, b])
+            faces.append([b, c, d])
+
+    return gl.MeshData(vertexes=verts, faces=np.array(faces))
