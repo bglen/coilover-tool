@@ -38,7 +38,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.use_helper = 0
         self.q_helper_outer_diameter        = QtWidgets.QLineEdit("85")
         self.q_helper_inner_diameter        = QtWidgets.QLineEdit("64")
-        self.q_helper_thickness             = QtWidgets.QLineEdit("2.5")
+        self.q_helper_perch_thickness             = QtWidgets.QLineEdit("2.5")
         self.q_helper_inner_height          = QtWidgets.QLineEdit("13")
         self.q_helper_spring_id             = QtWidgets.QLineEdit("57.15") # mm
         self.q_helper_spring_od             = QtWidgets.QLineEdit("73.91") # mm
@@ -65,6 +65,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         self.unit = "mm"
         self.weight_unit = "kg"
+        self.g = 9.80665
 
         self.corner_weights = {
             "front_left": QtWidgets.QLineEdit("295"),
@@ -98,7 +99,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             "body_threaded_length": self.q_body_threaded_length,
             "helper_outer_diameter": self.q_helper_outer_diameter,
             "helper_inner_diameter": self.q_helper_inner_diameter,
-            "helper_thickness": self.q_helper_thickness,
+            "helper_thickness": self.q_helper_perch_thickness,
             "helper_inner_height": self.q_helper_inner_height,
             "helper_spring_id": self.q_helper_spring_id,
             "helper_spring_od": self.q_helper_spring_od,
@@ -157,7 +158,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.use_helper,
             self.q_helper_outer_diameter,
             self.q_helper_inner_diameter,
-            self.q_helper_thickness,
+            self.q_helper_perch_thickness,
             self.q_helper_inner_height,
             self.q_helper_spring_id,
             self.q_helper_spring_od,
@@ -447,7 +448,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             (self.q_body_threaded_length, "Body threaded length"),
             (self.q_helper_outer_diameter, "Helper perch outer diameter"),
             (self.q_helper_inner_diameter, "Helper perch inner diameter"),
-            (self.q_helper_thickness, "Helper perch thickness"),
+            (self.q_helper_perch_thickness, "Helper perch thickness"),
             (self.q_helper_inner_height, "Helper perch inner height"),
             (self.q_helper_spring_id, "Helper spring inner diameter"),
             (self.q_helper_spring_od, "Helper spring outer diameter"),
@@ -544,7 +545,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.helper_below,
             self.q_helper_outer_diameter,
             self.q_helper_inner_diameter,
-            self.q_helper_thickness,
+            self.q_helper_perch_thickness,
             self.q_helper_inner_height,
             self.q_helper_spring_id,
             self.q_helper_spring_od,
@@ -664,7 +665,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         motion_ratio = max(motion_ratio, 0.0)
         sprung_mass = max(corner_mass - unsprung_mass, 0.0)
-        sprung_force = sprung_mass * 9.80665  # N at the wheel
+        sprung_force = sprung_mass * self.g  # N at the wheel
         coilover_force = sprung_force * motion_ratio
 
         return {
@@ -691,7 +692,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.lower_perch_position = self.read_length(self.q_lower_perch_position)
             self.damper_free_length = self.read_length(self.q_damper_free_length)
             self.damper_comp_length = self.read_length(self.q_damper_comp_length)
-            self.helper_thickness = self.read_length(self.q_helper_thickness)
+            self.helper_perch_thickness = self.read_length(self.q_helper_perch_thickness)
             self.helper_outer_diameter = self.read_length(self.q_helper_outer_diameter)
             self.helper_inner_diameter = self.read_length(self.q_helper_inner_diameter)
             self.helper_inner_height = self.read_length(self.q_helper_inner_height)
@@ -704,7 +705,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             return
 
         self.shaft_length = self.damper_comp_length #TODO fix this simplificiation
-        hole_r = (self.read_length(self.q_helper_inner_diameter) - 2 * self.helper_thickness) / 2.0 # second ring’s hole radius:
+        hole_r = (self.read_length(self.q_helper_inner_diameter) - 2 * self.helper_perch_thickness) / 2.0 # second ring’s hole radius:
 
         # Clear old mesh geometry
         for item in [
@@ -775,7 +776,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             wire_width=self.helper_wire_width,
             solid_height=self.helper_spring_bind_length
         )
-        self.helper_spring_lower_position = self.spring_upper_position + self.spring_wire_diameter / 2 + self.helper_thickness + self.helper_wire_height / 2 # Z coordinate where the bottom spring wire's center sits
+        self.helper_spring_lower_position = self.spring_upper_position + self.spring_wire_diameter / 2 + self.helper_perch_thickness + self.helper_wire_height / 2 # Z coordinate where the bottom spring wire's center sits
         self.helper_spring_upper_position = self.helper_spring_lower_position + self.helper_spring_free_length - self.helper_wire_height # Z coordinate where the top spring wire's center sits
         theta  = np.linspace(0, 2 * np.pi * self.helper_coils, 200)
         r = (self.helper_inner_diameter + self.helper_wire_width) / 2
@@ -870,7 +871,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.view.removeItem(self.helper_perch)
 
         # --- build the two annular meshes ---
-        md1 = make_annular_cylinder(self.helper_outer_diameter / 2,   self.helper_inner_diameter / 2, self.helper_thickness, sectors=64)
+        md1 = make_annular_cylinder(self.helper_outer_diameter / 2,   self.helper_inner_diameter / 2, self.helper_perch_thickness, sectors=64)
         md2 = make_annular_cylinder(self.helper_inner_diameter / 2, hole_r, self.helper_inner_height, sectors=64)
 
         # --- merge them into one mesh ---
@@ -887,7 +888,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             glOptions='opaque', computeNormals=True
         )
 
-        self.helper_perch.translate(0, 0, (self.damper_body_length + self.lower_perch_position + self.spring_free_length + self.helper_thickness/2))
+        self.helper_perch.translate(0, 0, (self.damper_body_length + self.lower_perch_position + self.spring_free_length + self.helper_perch_thickness/2))
         self.view.addItem(self.helper_perch)
 
 
@@ -902,16 +903,20 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         """
         min_shaft_position = max(
             self.damper_comp_length,
-            (self.spring_bottom_position - self.spring_wire_diameter / 2 + self.spring_bind_length + self.helper_spring_bind_length + self.helper_thickness)
+            (self.spring_bottom_position - self.spring_wire_diameter / 2 + self.spring_bind_length + self.helper_spring_bind_length + self.helper_perch_thickness)
         )
 
         shaft_upper_position = self.damper_free_length - (self.damper_free_length - min_shaft_position) * f
-        available_length = shaft_upper_position - (self.spring_bottom_position - self.spring_wire_diameter / 2) - self.helper_thickness
+
+        # available_length: this not the available travel
+        available_spring_length = shaft_upper_position - (self.spring_bottom_position - self.spring_wire_diameter / 2) - self.helper_perch_thickness
+
+        available_length = available_spring_length - self.spring_bind_length - self.helper_spring_bind_length
 
         spring_length, helper_spring_length, spring_force = split_strut_length_to_springs(
             self.spring_rate,
             self.helper_spring_rate,
-            available_length,
+            available_spring_length,
             self.spring_bind_length,
             self.helper_spring_bind_length,
             self.spring_free_length,
@@ -919,8 +924,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         )
 
         spring_upper_position = self.spring_bottom_position + (spring_length - self.spring_wire_diameter)
-        helper_perch_position = spring_upper_position + self.spring_wire_diameter / 2 + self.helper_thickness / 2
-        helper_spring_lower_position = helper_perch_position + self.helper_thickness / 2 + self.helper_wire_height / 2
+        helper_perch_position = spring_upper_position + self.spring_wire_diameter / 2 + self.helper_perch_thickness / 2
+        helper_spring_lower_position = helper_perch_position + self.helper_perch_thickness / 2 + self.helper_wire_height / 2
         helper_spring_upper_position = helper_spring_lower_position + (helper_spring_length - self.helper_wire_height)
 
         travel = self.damper_free_length - shaft_upper_position
@@ -963,7 +968,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
                 force = target_force
 
         # Compute maximum travel
-        max_travel = self.damper_free_length - (self.spring_bottom_position - self.spring_wire_diameter / 2) - self.helper_thickness
+        max_travel = self.damper_free_length - (self.spring_bottom_position - self.spring_wire_diameter / 2) - self.helper_perch_thickness - self.spring_bind_length - self.helper_spring_bind_length
 
         rebound_travel = ride_pos # the amount the damper compresses at ride height is the maximum possible rebound travel
         heave_travel = max_travel - rebound_travel
@@ -1286,6 +1291,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.current_file_path = path
         name = os.path.basename(path) if path else "Untitled"
         self.setWindowTitle(f"Coilover Tool - {name}")
+
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     win = CoiloverDesigner()
