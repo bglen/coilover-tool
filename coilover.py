@@ -1,7 +1,9 @@
+import json
+import os
 import sys
 import numpy as np
 
-from PyQt5 import QtWidgets, QtCore, sip
+from PyQt5 import QtWidgets, QtCore, QtGui, sip
 from PyQt5.QtGui import QVector3D
 
 import pyqtgraph as pg
@@ -17,6 +19,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("Coilover Tool")
         self.resize(1400, 600)
+        self.current_file_path = None
 
         # === Left panel: parameter inputs ===
         form = QtWidgets.QFormLayout()
@@ -77,6 +80,47 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             "front_right": QtWidgets.QLineEdit("36"),
             "rear_left": QtWidgets.QLineEdit("32"),
             "rear_right": QtWidgets.QLineEdit("32"),
+        }
+        self.input_fields = {
+            "spring_id": self.q_spring_id,
+            "spring_wire_diameter": self.q_spring_wire_diameter,
+            "spring_free_length": self.q_spring_free_length,
+            "spring_rate": self.q_spring_rate,
+            "spring_bind_length": self.q_spring_bind_length,
+            "damper_free_length": self.q_damper_free_length,
+            "damper_comp_length": self.q_damper_comp_length,
+            "damper_body_length": self.q_damper_body_length,
+            "damper_body_diameter": self.q_damper_body_diameter,
+            "damper_shaft_diameter": self.q_damper_shaft_diameter,
+            "body_threaded_length": self.q_body_threaded_length,
+            "helper_outer_diameter": self.q_helper_outer_diameter,
+            "helper_inner_diameter": self.q_helper_inner_diameter,
+            "helper_thickness": self.q_helper_thickness,
+            "helper_inner_height": self.q_helper_inner_height,
+            "helper_spring_id": self.q_helper_spring_id,
+            "helper_spring_od": self.q_helper_spring_od,
+            "helper_spring_free_length": self.q_helper_spring_free_length,
+            "helper_spring_rate": self.q_helper_spring_rate,
+            "helper_spring_bind_length": self.q_helper_spring_bind_length,
+            "bump_height": self.q_bump_height,
+            "bump_diameter": self.q_bump_diameter,
+            "bump_rate": self.q_bump_rate,
+            "lower_perch_outer_diameter": self.q_lower_perch_outer_diameter,
+            "lower_perch_thickness": self.q_lower_perch_thickness,
+            "lower_perch_sleeve_height": self.q_lower_perch_sleeve_height,
+            "lower_perch_sleeve_inner_diameter": self.q_lower_perch_sleeve_inner_diameter,
+            "upper_perch_outer_diameter": self.q_upper_perch_outer_diameter,
+            "upper_perch_thickness": self.q_upper_perch_thickness,
+            "upper_perch_tapered_height": self.q_upper_perch_tapered_height,
+            "lower_perch_position": self.q_lower_perch_position,
+            "corner_weight_front_left": self.corner_weights["front_left"],
+            "corner_weight_front_right": self.corner_weights["front_right"],
+            "corner_weight_rear_left": self.corner_weights["rear_left"],
+            "corner_weight_rear_right": self.corner_weights["rear_right"],
+            "unsprung_weight_front_left": self.unsprung_weights["front_left"],
+            "unsprung_weight_front_right": self.unsprung_weights["front_right"],
+            "unsprung_weight_rear_left": self.unsprung_weights["rear_left"],
+            "unsprung_weight_rear_right": self.unsprung_weights["rear_right"],
         }
 
         # Settings group
@@ -293,6 +337,30 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         # initial draw
         self.update_view()
+        self.default_project_state = self.get_project_state()
+
+        # Menus
+        file_menu = self.menuBar().addMenu("File")
+
+        new_act = QtWidgets.QAction("New Project", self)
+        new_act.setShortcut(QtGui.QKeySequence.New)
+        new_act.triggered.connect(self.new_project)
+        file_menu.addAction(new_act)
+
+        open_act = QtWidgets.QAction("Open…", self)
+        open_act.setShortcut(QtGui.QKeySequence.Open)
+        open_act.triggered.connect(self.open_project)
+        file_menu.addAction(open_act)
+
+        save_act = QtWidgets.QAction("Save", self)
+        save_act.setShortcut(QtGui.QKeySequence.Save)
+        save_act.triggered.connect(self.save_project)
+        file_menu.addAction(save_act)
+
+        save_as_act = QtWidgets.QAction("Save As…", self)
+        save_as_act.setShortcut(QtGui.QKeySequence.SaveAs)
+        save_as_act.triggered.connect(self.save_project_as)
+        file_menu.addAction(save_as_act)
 
     def on_unit_changed(self):
         """
@@ -410,10 +478,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         Toggle helper spring
         """
         # store the new state
-        if self.use_helper:
-            self.use_helper = 0
-        else:
-            self.use_helper = 1
+        self.use_helper = 1 if self.helper_chk.isChecked() else 0
 
         # optionally enable/disable the other helper controls
         for w in (
@@ -436,10 +501,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         Toggle helper spring
         """
         # store the new state
-        if self.use_bump:
-            self.use_bump = 0
-        else:
-            self.use_bump = 1
+        self.use_bump = 1 if self.bump_chk.isChecked() else 0
 
         # optionally enable/disable the other helper controls
         for w in (
@@ -845,6 +907,148 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         state = self.compute_state(f)
         self.apply_state(state)
         self.update_force_marker(state)
+
+    def get_project_state(self):
+        """
+        Capture the current UI state for saving.
+        """
+        inputs = {}
+        for name, widget in self.input_fields.items():
+            if sip.isdeleted(widget):
+                continue
+            try:
+                inputs[name] = widget.text()
+            except RuntimeError:
+                # Widget was deleted while iterating; skip it
+                continue
+        toggles = {
+            "use_helper": bool(self.helper_chk.isChecked()),
+            "helper_above": bool(self.helper_above.isChecked()),
+            "helper_below": bool(self.helper_below.isChecked()),
+            "use_bump": bool(self.bump_chk.isChecked()),
+            "bump_external": bool(self.radio_bump_ext.isChecked()),
+            "bump_internal": bool(self.radio_bump_int.isChecked()),
+            "lower_perch_adjustable": bool(self.lower_perch_adjustable_chk.isChecked()),
+            "lower_perch_sleeve": bool(self.lower_perch_sleeve_chk.isChecked()),
+            "flip_damper": bool(self.flip_damper_chk.isChecked()),
+        }
+        corner_button = self.corner_button_group.checkedButton()
+
+        return {
+            "schema_version": 1,
+            "unit": self.unit,
+            "weight_unit": self.weight_unit,
+            "slider": int(self.slider.value()),
+            "inputs": inputs,
+            "toggles": toggles,
+            "corner": corner_button.text() if corner_button else None,
+        }
+
+    def apply_project_state(self, state):
+        """
+        Load saved state into the UI.
+        """
+        target_unit = state.get("unit", "mm")
+        if target_unit == "in":
+            self.radio_imperial.setChecked(True)
+        else:
+            self.radio_metric.setChecked(True)
+
+        inputs = state.get("inputs", {})
+        for name, widget in self.input_fields.items():
+            if name in inputs:
+                widget.setText(str(inputs[name]))
+
+        toggles = state.get("toggles", {})
+        # Checkboxes emit signals to toggle dependent controls
+        self.helper_chk.setChecked(bool(toggles.get("use_helper", False)))
+        if toggles.get("helper_above", True):
+            self.helper_above.setChecked(True)
+        else:
+            self.helper_below.setChecked(True)
+
+        self.bump_chk.setChecked(bool(toggles.get("use_bump", False)))
+        if toggles.get("bump_external", True):
+            self.radio_bump_ext.setChecked(True)
+        else:
+            self.radio_bump_int.setChecked(True)
+
+        self.lower_perch_adjustable_chk.setChecked(bool(toggles.get("lower_perch_adjustable", False)))
+        self.lower_perch_sleeve_chk.setChecked(bool(toggles.get("lower_perch_sleeve", False)))
+        self.flip_damper_chk.setChecked(bool(toggles.get("flip_damper", False)))
+
+        corner = state.get("corner")
+        if corner:
+            for btn in self.corner_button_group.buttons():
+                if btn.text() == corner:
+                    btn.setChecked(True)
+                    break
+
+        self.slider.blockSignals(True)
+        self.slider.setValue(int(state.get("slider", self.slider.value())))
+        self.slider.blockSignals(False)
+        self.update_view()
+
+    def _ensure_sus_extension(self, path):
+        return path if path.lower().endswith(".sus") else f"{path}.sus"
+
+    def _write_project_file(self, path):
+        data = self.get_project_state()
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            self.set_current_file(path)
+        except OSError as exc:
+            QtWidgets.QMessageBox.critical(self, "Save Failed", f"Could not save project:\n{exc}")
+
+    def save_project(self):
+        if self.current_file_path:
+            self._write_project_file(self.current_file_path)
+        else:
+            self.save_project_as()
+
+    def save_project_as(self):
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save Project",
+            "",
+            "Suspension Project (*.sus);;All Files (*)",
+        )
+        if not path:
+            return
+        path = self._ensure_sus_extension(path)
+        self._write_project_file(path)
+
+    def open_project(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Open Project",
+            "",
+            "Suspension Project (*.sus);;All Files (*)",
+        )
+        if not path:
+            return
+        self.load_project_from_path(path)
+
+    def load_project_from_path(self, path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            QtWidgets.QMessageBox.critical(self, "Open Failed", f"Could not open project:\n{exc}")
+            return
+
+        self.apply_project_state(data)
+        self.set_current_file(path)
+
+    def new_project(self):
+        self.apply_project_state(self.default_project_state)
+        self.set_current_file(None)
+
+    def set_current_file(self, path):
+        self.current_file_path = path
+        name = os.path.basename(path) if path else "Untitled"
+        self.setWindowTitle(f"Coilover Tool - {name}")
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     win = CoiloverDesigner()
