@@ -303,7 +303,7 @@ def create_setup_group(
     setup_group.setLayout(setup_layout)
     return setup_group, flip_damper_chk
 
-def create_vehicle_tab(corner_weights, unsprung_weights):
+def create_vehicle_tab(corner_weights, unsprung_weights, motion_ratios):
     vehicle_tab = QtWidgets.QWidget()
     layout = QtWidgets.QVBoxLayout()
 
@@ -322,6 +322,18 @@ def create_vehicle_tab(corner_weights, unsprung_weights):
     lbl.setObjectName("Rear Right corner weight")
     corner_form.addRow(lbl, corner_weights["rear_right"])
     corner_group.setLayout(corner_form)
+
+    motion_ratio_group = QtWidgets.QGroupBox("Motion Ratios")
+    motion_ratio_form = QtWidgets.QFormLayout()
+    lbl = QtWidgets.QLabel("Front Left (wheel:coilover):")
+    motion_ratio_form.addRow(lbl, motion_ratios["front_left"])
+    lbl = QtWidgets.QLabel("Front Right (wheel:coilover):")
+    motion_ratio_form.addRow(lbl, motion_ratios["front_right"])
+    lbl = QtWidgets.QLabel("Rear Left (wheel:coilover):")
+    motion_ratio_form.addRow(lbl, motion_ratios["rear_left"])
+    lbl = QtWidgets.QLabel("Rear Right (wheel:coilover):")
+    motion_ratio_form.addRow(lbl, motion_ratios["rear_right"])
+    motion_ratio_group.setLayout(motion_ratio_form)
 
     unsprung_group = QtWidgets.QGroupBox("Unsprung Weights")
     unsprung_form = QtWidgets.QFormLayout()
@@ -355,6 +367,7 @@ def create_vehicle_tab(corner_weights, unsprung_weights):
 
     layout.addWidget(corner_group)
     layout.addWidget(unsprung_group)
+    layout.addWidget(motion_ratio_group)
     layout.addWidget(corner_select_group)
     layout.addStretch(1)
     vehicle_tab.setLayout(layout)

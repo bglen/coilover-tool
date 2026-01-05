@@ -78,6 +78,12 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             "rear_left": QtWidgets.QLineEdit("32"),
             "rear_right": QtWidgets.QLineEdit("32"),
         }
+        self.motion_ratios = {
+            "front_left": QtWidgets.QLineEdit("1.0"),
+            "front_right": QtWidgets.QLineEdit("1.0"),
+            "rear_left": QtWidgets.QLineEdit("1.0"),
+            "rear_right": QtWidgets.QLineEdit("1.0"),
+        }
         self.input_fields = {
             "spring_id": self.q_spring_id,
             "spring_wire_diameter": self.q_spring_wire_diameter,
@@ -118,6 +124,10 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             "unsprung_weight_front_right": self.unsprung_weights["front_right"],
             "unsprung_weight_rear_left": self.unsprung_weights["rear_left"],
             "unsprung_weight_rear_right": self.unsprung_weights["rear_right"],
+            "motion_ratio_front_left": self.motion_ratios["front_left"],
+            "motion_ratio_front_right": self.motion_ratios["front_right"],
+            "motion_ratio_rear_left": self.motion_ratios["rear_left"],
+            "motion_ratio_rear_right": self.motion_ratios["rear_right"],
         }
 
         # Settings group
@@ -188,7 +198,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # Setup group
         setup_group, self.flip_damper_chk = create_setup_group(self.q_lower_perch_position)
 
-        vehicle_tab, self.corner_button_group = create_vehicle_tab(self.corner_weights, self.unsprung_weights)
+        vehicle_tab, self.corner_button_group = create_vehicle_tab(self.corner_weights, self.unsprung_weights, self.motion_ratios)
 
         # Assemble left‐side layout into tabs
         coilover_tab = QtWidgets.QWidget()
@@ -289,7 +299,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.force_plot.setTitle("Spring Force vs Travel")
         self.force_plot.setLabel('bottom', 'Travel', units='mm')
         self.force_plot.setLabel('left', 'Spring Force', units='N')
-        self.force_curve = self.force_plot.plot(pen=pg.mkPen('#4fc3f7', width=2))
+        self.force_curve_rebound = self.force_plot.plot(pen=pg.mkPen('#43a047', width=2))
+        self.force_curve_heave = self.force_plot.plot(pen=pg.mkPen('#e53935', width=2))
         self.force_marker = self.force_plot.plot(
             [0], [0],
             pen=None,
@@ -616,6 +627,54 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             return val / 5.710147162769185  # lbf/in -> N/mm
         return val
 
+    def read_mass(self, widget):
+        """
+        Read a weight entry and return kilograms regardless of UI unit.
+        """
+        val = float(widget.text())
+        if self.weight_unit == "lb":
+            return val * 0.45359237
+        return val
+
+    def get_selected_corner_key(self):
+        """
+        Map the selected radio button to the corner key.
+        """
+        btn = self.corner_button_group.checkedButton()
+        text = btn.text() if btn else ""
+        mapping = {
+            "Front Left": "front_left",
+            "Front Right": "front_right",
+            "Rear Left": "rear_left",
+            "Rear Right": "rear_right",
+        }
+        return mapping.get(text, "front_left")
+
+    def compute_corner_load(self):
+        """
+        Return the target coilover force for the selected corner.
+        """
+        corner_key = self.get_selected_corner_key()
+        try:
+            corner_mass = self.read_mass(self.corner_weights[corner_key])
+            unsprung_mass = self.read_mass(self.unsprung_weights[corner_key])
+            motion_ratio = float(self.motion_ratios[corner_key].text())
+        except ValueError:
+            return None
+
+        motion_ratio = max(motion_ratio, 0.0)
+        sprung_mass = max(corner_mass - unsprung_mass, 0.0)
+        sprung_force = sprung_mass * 9.80665  # N at the wheel
+        coilover_force = sprung_force * motion_ratio
+
+        return {
+            "corner_mass": corner_mass,
+            "unsprung_mass": unsprung_mass,
+            "motion_ratio": motion_ratio,
+            "sprung_force": sprung_force,
+            "coilover_force": coilover_force,
+        }
+
     def update_view(self):
         """
         Update and render the 3D visualization
@@ -880,9 +939,67 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             "travel": travel,
         }
 
+    def compute_ride_height(self, travel_vals, force_vals):
+        """
+        Calculate ride height position where spring force balances corner load.
+        """
+        if travel_vals.size == 0 or force_vals.size == 0:
+            return {"travel": 0.0, "force": 0.0, "rebound": 0.0, "heave": 0.0}
+
+        corner_load = self.compute_corner_load()
+        if not corner_load:
+            ride_pos = float(travel_vals[0])
+            force = float(force_vals[0])
+        else:
+            target_force = max(corner_load["coilover_force"], 0.0)
+            if target_force <= force_vals[0]:
+                ride_pos = float(travel_vals[0])
+                force = float(force_vals[0])
+            elif target_force >= force_vals[-1]:
+                ride_pos = float(travel_vals[-1])
+                force = float(force_vals[-1])
+            else:
+                ride_pos = float(np.interp(target_force, force_vals, travel_vals))
+                force = target_force
+
+        # Compute maximum travel
+        max_travel = self.damper_free_length - (self.spring_bottom_position - self.spring_wire_diameter / 2) - self.helper_thickness
+
+        rebound_travel = ride_pos # the amount the damper compresses at ride height is the maximum possible rebound travel
+        heave_travel = max_travel - rebound_travel
+
+        return {
+            "ride_height_position": ride_pos,
+            "force": force,
+            "rebound_travel": rebound_travel,
+            "heave_travel": heave_travel,
+        }
+
+    def split_force_curve_for_plot(self, travel_vals, force_vals, ride_travel):
+        """
+        Split the force curve into rebound (extension) and heave (compression) segments.
+        """
+        if travel_vals.size == 0 or force_vals.size == 0:
+            return [], [], [], []
+
+        ride_force = float(np.interp(ride_travel, travel_vals, force_vals))
+
+        if ride_travel <= travel_vals[0]:
+            return [travel_vals[0]], [force_vals[0]], travel_vals.tolist(), force_vals.tolist()
+
+        if ride_travel >= travel_vals[-1]:
+            return travel_vals.tolist(), force_vals.tolist(), [travel_vals[-1]], [force_vals[-1]]
+
+        idx = int(np.searchsorted(travel_vals, ride_travel, side="left"))
+        rebound_t = np.concatenate([travel_vals[:idx], [ride_travel]])
+        rebound_f = np.concatenate([force_vals[:idx], [ride_force]])
+        heave_t = np.concatenate([[ride_travel], travel_vals[idx:]])
+        heave_f = np.concatenate([[ride_force], force_vals[idx:]])
+        return rebound_t, rebound_f, heave_t, heave_f
+
     def compute_force_curve(self, samples=150):
         """
-        Calculate spring force across the full travel for plotting.
+        Calculate spring force across the full travel for plotting and ride height.
         """
         travel_vals = []
         force_vals = []
@@ -891,15 +1008,40 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             travel_vals.append(state["travel"])
             force_vals.append(state["spring_force"])
 
-        self.total_travel = travel_vals[-1] if travel_vals else 0.0
-        self.force_curve.setData(travel_vals, force_vals)
+        self.travel_vals = np.array(travel_vals)
+        self.force_vals = np.array(force_vals)
+
+        self.total_travel = float(self.travel_vals[-1]) if travel_vals else 0.0
+
+        # Compute static ride-height parameters
+        ride_state = self.compute_ride_height(self.travel_vals, self.force_vals)
+        self.ride_height_travel = ride_state["ride_height_position"]
+        self.ride_height_force = ride_state["force"]
+        self.rebound_available = ride_state["rebound_travel"]
+        self.heave_available = ride_state["heave_travel"]
+
+        rebound_t, rebound_f, heave_t, heave_f = self.split_force_curve_for_plot(
+            self.travel_vals, self.force_vals, self.ride_height_travel
+        )
+
+        if len(rebound_t) > 0:
+            self.force_curve_rebound.setData(rebound_t, rebound_f)
+        else:
+            self.force_curve_rebound.clear()
+
+        if len(heave_t) > 0:
+            self.force_curve_heave.setData(heave_t, heave_f)
+        else:
+            self.force_curve_heave.clear()
 
         # Keep axes reasonable when values are constant/zero
-        x_max = max(travel_vals) if travel_vals else 1
+        x_max = float(np.max(self.travel_vals)) if travel_vals else 1
+        if x_max == 0:
+            x_max = 1
         self.force_plot.setXRange(0, x_max, padding=0.02)
         if force_vals:
-            y_min = min(force_vals)
-            y_max = max(force_vals)
+            y_min = float(np.min(self.force_vals))
+            y_max = float(np.max(self.force_vals))
             if y_min == y_max:
                 y_min -= 1
                 y_max += 1
@@ -956,11 +1098,23 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.helper_perch.translate(0, 0, self.helper_perch_position)
 
         # Update overlay text
-        self.info_label.setText(f"Coilover length: {self.shaft_upper_position:.1f} mm\n" + 
-                                f"Availible length: {available_length:.1f} mm\n" +
-                                f"Main Spring length: {spring_length:.1f} mm\n" +
-                                f"Helper Spring length: {helper_spring_length:.1f} mm\n" + 
-                                f"Spring Force: {spring_force:.1f} N\n")
+        ride_travel = getattr(self, "ride_height_travel", 0.0)
+        ride_force = getattr(self, "ride_height_force", 0.0)
+        rebound_avail = getattr(self, "rebound_available", 0.0)
+        heave_avail = getattr(self, "heave_available", 0.0)
+
+        self.info_label.setText(
+            f"Coilover length: {self.shaft_upper_position:.1f} mm\n"
+            f"Available travel: {available_length:.1f} mm\n"
+            f"Main Spring length: {spring_length:.1f} mm\n"
+            f"Helper Spring length: {helper_spring_length:.1f} mm\n"
+            f"Spring Force: {spring_force:.1f} N\n"
+            f"\n"
+            f"Ride height travel: {ride_travel:.1f} mm\n"
+            f"Ride height spring force: {ride_force:.1f} N\n"
+            f"Rebound available: {rebound_avail:.1f} mm\n"
+            f"Heave available: {heave_avail:.1f} mm\n"
+        )
         self.info_label.adjustSize()
 
         # get view size
