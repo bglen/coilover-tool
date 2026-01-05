@@ -6,20 +6,36 @@ def make_cylinder(radius, length, sectors):
     """
     Returns a MeshData cylinder aligned along z.
     """
-    theta = np.linspace(0, 2*np.pi, sectors)
+    theta = np.linspace(0, 2*np.pi, sectors, endpoint=False)
     xs, ys = np.cos(theta)*radius, np.sin(theta)*radius
     # top and bottom circles
     top    = np.vstack([xs, ys, np.full_like(xs, length/2)]).T
     bottom = np.vstack([xs, ys, np.full_like(xs, -length/2)]).T
+    top_center = np.array([[0.0, 0.0,  length/2]])
+    bot_center = np.array([[0.0, 0.0, -length/2]])
+
+    verts = np.vstack([top, bottom, top_center, bot_center])
     faces = []
-    verts = np.vstack([top, bottom])
+
     # side faces
-    for i in range(sectors-1):
-        faces.append([i, i+1, sectors + i])
-        faces.append([i+1, sectors+1 + i, sectors + i])
-    # close the loop
-    faces.append([sectors-1, 0, 2*sectors-1])
-    faces.append([0, sectors, 2*sectors-1])
+    for i in range(sectors):
+        n = (i + 1) % sectors
+        faces.append([i, n, sectors + i])
+        faces.append([n, sectors + n, sectors + i])
+
+    top_c_idx = 2 * sectors
+    bot_c_idx = 2 * sectors + 1
+
+    # top cap (normals point +Z)
+    for i in range(sectors):
+        n = (i + 1) % sectors
+        faces.append([top_c_idx, i, n])
+
+    # bottom cap (normals point -Z)
+    for i in range(sectors):
+        n = (i + 1) % sectors
+        faces.append([bot_c_idx, sectors + n, sectors + i])
+
     return gl.MeshData(vertexes=verts, faces=np.array(faces))
 
 def make_annular_cylinder(outer_r, inner_r, height, sectors=32):

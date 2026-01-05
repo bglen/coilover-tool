@@ -7,16 +7,15 @@ Python tool for helping you set up coil-over suspension systems.
 ## Features
 - Specify spring, damper body, damper shaft, and perch dimensions
 - 3D visualization of the coilover throughout its travel range
+- Calculate net spring rates with multiple springs
 
 ## To Do
 - Add bump stop geometry
-- better perch and damper body geometry
-- inputs for perch geometry
 - Calculate and identify max travel condition: coil bind, bump stop engage, perch collison
 - Calculate static ride position given corner weight, along with bump and droop travel ranges
 - Option for flat spring ends
 - Inverted damper option (mainly to visualize bump stop location)
-- Flipped damepr option (visualize body attatched to sprung mass)
+- Flipped damper option (visualize body attatched to sprung mass)
 - Add threaded perch ranges to estimate ride heigh adjustment range and corresponding bump and droop travel
 - Geometry collisions (ex: helper spring perch collides with top of damper body before bump engagement)
 - Option to add threaded sleeve geometry on to damper body (mainly for coilover conversions)
