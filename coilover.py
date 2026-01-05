@@ -21,9 +21,6 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.resize(1400, 600)
         self.current_file_path = None
 
-        # === Left panel: parameter inputs ===
-        form = QtWidgets.QFormLayout()
-
         # text field variables
         self.q_spring_id                    = QtWidgets.QLineEdit("63.5")   # mm
         self.q_spring_wire_diameter         = QtWidgets.QLineEdit("9.6")   # mm
@@ -224,11 +221,6 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         separator.setFrameShape(QtWidgets.QFrame.HLine)
         left_layout.addWidget(separator)
 
-        # Update button
-        update_btn = QtWidgets.QPushButton("Update View")
-        update_btn.clicked.connect(self.update_view)
-        left_layout.addWidget(update_btn, alignment=QtCore.Qt.AlignTop)
-
         left = QtWidgets.QWidget()
         left.setLayout(left_layout)
 
@@ -237,15 +229,16 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setWidget(left)
 
-        btn = QtWidgets.QPushButton("Update View")
-        btn.clicked.connect(self.update_view)
-        form.addRow(btn)
-
         # === Right panel: 3D view ===
         self.view = gl.GLViewWidget()
         self.view.opts['lightPosition'] = (10, 10, 40)
         self.view.opts['distance'] = 600
         self.view.setBackgroundColor('#181818')
+        self.initial_camera = {
+            "distance": self.view.opts.get("distance"),
+            "elevation": self.view.opts.get("elevation"),
+            "azimuth": self.view.opts.get("azimuth"),
+        }
 
         # Text Overlays
         self.info_label = QtWidgets.QLabel(self.view)
@@ -259,6 +252,24 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.info_label.move(10, 10)   # 10px from top‐left
         self.info_label.show()
 
+        # Reset camera button overlay
+        self.reset_view_btn = QtWidgets.QPushButton("Reset View", self.view)
+        self.reset_view_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(32, 32, 32, 180);
+                color: white;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QPushButton:hover {
+                background-color: rgba(55, 55, 55, 200);
+            }
+        """)
+        self.reset_view_btn.clicked.connect(self.reset_view)
+        self.reset_view_btn.raise_()
+        QtCore.QTimer.singleShot(0, self.position_reset_button)
+
         # bottom‐center help text
         self.help_label = QtWidgets.QLabel(self.view)
         self.help_label.setStyleSheet("""
@@ -266,7 +277,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             background-color: rgba(0,0,0,0);
             font-size: 10pt;
         """)
-        self.help_label.setText("Right-click to rotate; Scroll wheel to zoom; Cmd + right-click to pan")
+        self.help_label.setText("Left-click to rotate; Scroll wheel to zoom; Cmd + left-click to pan")
         self.help_label.adjustSize()
         self.help_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
         self.help_label.show()
@@ -299,6 +310,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.slider.setRange(0, 100)
         self.slider.setValue(0)
         self.slider.valueChanged.connect(self.animate)
+
+        self.register_live_updates()
 
         # layout them
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -334,6 +347,12 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.view.setCameraPosition(
             azimuth=45        # rotate around Z by 0°
         )
+        # capture the camera defaults after initial positioning
+        self.initial_camera = {
+            "distance": self.view.opts.get("distance"),
+            "elevation": self.view.opts.get("elevation"),
+            "azimuth": self.view.opts.get("azimuth"),
+        }
 
         # initial draw
         self.update_view()
@@ -361,6 +380,26 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         save_as_act.setShortcut(QtGui.QKeySequence.SaveAs)
         save_as_act.triggered.connect(self.save_project_as)
         file_menu.addAction(save_as_act)
+
+    def register_live_updates(self):
+        """
+        Connect inputs and toggles so the view refreshes automatically.
+        """
+        for widget in self.input_fields.values():
+            widget.editingFinished.connect(self.update_view)
+
+        self.helper_chk.toggled.connect(self.update_view)
+        self.helper_above.toggled.connect(self.update_view)
+        self.helper_below.toggled.connect(self.update_view)
+        self.bump_chk.toggled.connect(self.update_view)
+        self.radio_bump_ext.toggled.connect(self.update_view)
+        self.radio_bump_int.toggled.connect(self.update_view)
+        self.lower_perch_adjustable_chk.toggled.connect(self.update_view)
+        self.lower_perch_sleeve_chk.toggled.connect(self.update_view)
+        self.flip_damper_chk.toggled.connect(self.update_view)
+        self.corner_button_group.buttonClicked.connect(lambda _: self.update_view())
+        self.view.installEventFilter(self)
+        self.reset_view_btn.installEventFilter(self)
 
     def on_unit_changed(self):
         """
@@ -472,6 +511,14 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         self.unit = "in" if new_unit_mode=="imperial" else "mm"
         self.weight_unit = "lb" if new_unit_mode=="imperial" else "kg"
+        self.update_view()
+
+    def eventFilter(self, obj, event):
+        if obj is self.view and event.type() == QtCore.QEvent.Resize:
+            if hasattr(self, "spring_bottom_position"):
+                self.animate(self.slider.value())
+            self.position_reset_button()
+        return super().eventFilter(obj, event)
 
     def on_helper_toggled(self):
         """
@@ -495,6 +542,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.q_helper_spring_bind_length
         ):
             w.setEnabled(self.use_helper)
+        if hasattr(self, "view"):
+            self.update_view()
 
     def on_bump_toggled(self):
         """
@@ -512,12 +561,16 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.q_bump_rate,
         ):
             w.setEnabled(self.use_bump)
+        if hasattr(self, "view"):
+            self.update_view()
 
     def on_lower_perch_adj_toggled(self, checked):
         """
         Enable lower perch position input when adjustable perch is selected.
         """
         self.q_lower_perch_position.setEnabled(bool(checked))
+        if hasattr(self, "view"):
+            self.update_view()
 
     def lower_perch_sleeve_chk_toggled(self, checked):
         """
@@ -528,6 +581,22 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.q_lower_perch_sleeve_inner_diameter,
         ):
             w.setEnabled(bool(checked))
+        if hasattr(self, "view"):
+            self.update_view()
+
+    def position_reset_button(self):
+        """
+        Keep the reset button tucked into the top-right of the GL view.
+        """
+        if not hasattr(self, "reset_view_btn"):
+            return
+        self.reset_view_btn.adjustSize()
+        margin = 10
+        w = self.view.width()
+        h = self.view.height()
+        btn_w = self.reset_view_btn.width()
+        btn_h = self.reset_view_btn.height()
+        self.reset_view_btn.move(max(margin, w - btn_w - margin), margin)
 
     def read_length(self, widget):
         """
@@ -551,27 +620,29 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         """
         Update and render the 3D visualization
         """
-        # Input values
-        self.spring_id = self.read_length(self.q_spring_id)
-        self.spring_wire_diameter = self.read_length(self.q_spring_wire_diameter)
-        self.spring_free_length = self.read_length(self.q_spring_free_length)
-        self.spring_bind_length = self.read_length(self.q_spring_bind_length)
-        self.spring_rate = self.read_rate(self.q_spring_rate)
-        self.damper_body_diameter = self.read_length(self.q_damper_body_diameter)
-        self.damper_body_length = self.read_length(self.q_damper_body_length)
-        self.damper_shaft_diameter = self.read_length(self.q_damper_shaft_diameter)
-        self.lower_perch_position = self.read_length(self.q_lower_perch_position)
-        self.damper_free_length = self.read_length(self.q_damper_free_length)
-        self.damper_comp_length = self.read_length(self.q_damper_comp_length)
-        self.helper_thickness = self.read_length(self.q_helper_thickness)
-        self.helper_outer_diameter = self.read_length(self.q_helper_outer_diameter)
-        self.helper_inner_diameter = self.read_length(self.q_helper_inner_diameter)
-        self.helper_inner_height = self.read_length(self.q_helper_inner_height)
-        self.helper_spring_id = self.read_length(self.q_helper_spring_id)
-        self.helper_spring_od = self.read_length(self.q_helper_spring_od)
-        self.helper_spring_free_length = self.read_length(self.q_helper_spring_free_length)
-        self.helper_spring_rate = self.read_rate(self.q_helper_spring_rate)
-        self.helper_spring_bind_length = self.read_length(self.q_helper_spring_bind_length)
+        try:
+            self.spring_id = self.read_length(self.q_spring_id)
+            self.spring_wire_diameter = self.read_length(self.q_spring_wire_diameter)
+            self.spring_free_length = self.read_length(self.q_spring_free_length)
+            self.spring_bind_length = self.read_length(self.q_spring_bind_length)
+            self.spring_rate = self.read_rate(self.q_spring_rate)
+            self.damper_body_diameter = self.read_length(self.q_damper_body_diameter)
+            self.damper_body_length = self.read_length(self.q_damper_body_length)
+            self.damper_shaft_diameter = self.read_length(self.q_damper_shaft_diameter)
+            self.lower_perch_position = self.read_length(self.q_lower_perch_position)
+            self.damper_free_length = self.read_length(self.q_damper_free_length)
+            self.damper_comp_length = self.read_length(self.q_damper_comp_length)
+            self.helper_thickness = self.read_length(self.q_helper_thickness)
+            self.helper_outer_diameter = self.read_length(self.q_helper_outer_diameter)
+            self.helper_inner_diameter = self.read_length(self.q_helper_inner_diameter)
+            self.helper_inner_height = self.read_length(self.q_helper_inner_height)
+            self.helper_spring_id = self.read_length(self.q_helper_spring_id)
+            self.helper_spring_od = self.read_length(self.q_helper_spring_od)
+            self.helper_spring_free_length = self.read_length(self.q_helper_spring_free_length)
+            self.helper_spring_rate = self.read_rate(self.q_helper_spring_rate)
+            self.helper_spring_bind_length = self.read_length(self.q_helper_spring_bind_length)
+        except ValueError:
+            return
 
         self.shaft_length = self.damper_comp_length #TODO fix this simplificiation
         hole_r = (self.read_length(self.q_helper_inner_diameter) - 2 * self.helper_thickness) / 2.0 # second ring’s hole radius:
@@ -764,6 +835,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # travel info
         self.compute_force_curve()
         self.animate(self.slider.value())
+        self.position_reset_button()
 
     def compute_state(self, f):
         """
@@ -898,6 +970,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         lbl_h = self.help_label.height()
         # center horizontally, place 10px above bottom
         self.help_label.move((w - lbl_w)//2, h - lbl_h - 10)
+        self.position_reset_button()
 
     def animate(self, t):
         """
@@ -991,6 +1064,16 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
     def _ensure_sus_extension(self, path):
         return path if path.lower().endswith(".sus") else f"{path}.sus"
+
+    def reset_view(self):
+        """
+        Reset the camera to the default framing.
+        """
+        self.view.opts['center'] = QVector3D(0, 0, self.read_length(self.q_damper_body_length))
+        distance = self.initial_camera.get("distance", self.view.opts.get("distance"))
+        elevation = self.initial_camera.get("elevation", self.view.opts.get("elevation"))
+        azimuth = self.initial_camera.get("azimuth", self.view.opts.get("azimuth"))
+        self.view.setCameraPosition(distance=distance, elevation=elevation, azimuth=azimuth)
 
     def _write_project_file(self, path):
         data = self.get_project_state()
