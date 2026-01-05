@@ -50,6 +50,15 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.q_bump_diameter                = QtWidgets.QLineEdit("50")
         self.q_bump_rate                    = QtWidgets.QLineEdit("50")
 
+        self.q_lower_perch_outer_diameter   = QtWidgets.QLineEdit("87")
+        self.q_lower_perch_thickness        = QtWidgets.QLineEdit("13")
+        self.q_lower_perch_sleeve_height    = QtWidgets.QLineEdit("56")
+        self.q_lower_perch_sleeve_inner_diameter   = QtWidgets.QLineEdit("52")
+
+        self.q_upper_perch_outer_diameter   = QtWidgets.QLineEdit("85")
+        self.q_upper_perch_thickness        = QtWidgets.QLineEdit("10")
+        self.q_upper_perch_tapered_height   = QtWidgets.QLineEdit("10")
+
         self.q_lower_perch_position         = QtWidgets.QLineEdit("10")   # mm
         # 87 mm diameter perch
 
@@ -100,6 +109,26 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.q_bump_rate
             )
 
+        # Lower perch group
+        lower_perch_group, self.lower_perch_adjustable_chk, self.lower_perch_sleeve_chk = create_lower_perch_group(
+            self.on_lower_perch_adj_toggled,
+            self.lower_perch_sleeve_chk_toggled,
+            self.q_lower_perch_outer_diameter,
+            self.q_lower_perch_thickness,
+            self.q_lower_perch_sleeve_height,
+            self.q_lower_perch_sleeve_inner_diameter
+        )
+
+        self.on_lower_perch_adj_toggled(self.lower_perch_adjustable_chk.isChecked())
+        self.lower_perch_sleeve_chk_toggled(self.lower_perch_sleeve_chk.isChecked())
+
+        # Upper perch group
+        upper_perch_group = create_upper_perch_group(
+            self.q_upper_perch_outer_diameter,
+            self.q_upper_perch_thickness,
+            self.q_upper_perch_tapered_height
+        )
+
         # Setup group
         setup_group, self.flip_damper_chk = create_setup_group(self.q_lower_perch_position)
 
@@ -110,6 +139,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         left_layout.addWidget(damper_group)
         left_layout.addWidget(helper_group)
         left_layout.addWidget(bump_group)
+        left_layout.addWidget(lower_perch_group)
         left_layout.addWidget(setup_group)
 
         # Separator
@@ -296,6 +326,22 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         ):
             w.setEnabled(self.use_bump)
 
+    def on_lower_perch_adj_toggled(self, checked):
+        """
+        Enable lower perch position input when adjustable perch is selected.
+        """
+        self.q_lower_perch_position.setEnabled(bool(checked))
+
+    def lower_perch_sleeve_chk_toggled(self, checked):
+        """
+        Enable sleeve dimension inputs when using a conversion sleeve.
+        """
+        for w in (
+            self.q_lower_perch_sleeve_height,
+            self.q_lower_perch_sleeve_inner_diameter,
+        ):
+            w.setEnabled(bool(checked))
+
     def read_length(self, widget):
         """
         Ensures the 3D animation always reads the inputs in mm
@@ -428,7 +474,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         perch_clearance  = 2.0       # mm beyond spring OD
         cyl_thickness    = 5.0       # cylinder height
         cone_height      = 10.0      # cone height
-        plate_dia        = self.spring_id + perch_clearance
+        plate_dia        = 87
 
         cyl_mesh = make_cylinder(plate_dia/2.0, cyl_thickness, sectors=32)
         self.upper_perch = gl.GLMeshItem(
@@ -473,9 +519,9 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         # Lower spring perch
         perch_clearance  = 2.0       # mm beyond spring OD
-        cyl_thickness    = 5.0       # cylinder height
+        cyl_thickness    = 10.0       # cylinder height
         cone_height      = 10.0      # cone height
-        plate_dia        = self.spring_id + perch_clearance
+        plate_dia        = 87
 
         # remove old perch if exists
         if hasattr(self, 'lower_perch'):
