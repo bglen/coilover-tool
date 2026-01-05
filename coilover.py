@@ -20,6 +20,9 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.setWindowTitle("Coilover Tool")
         self.resize(1400, 600)
         self.current_file_path = None
+        self.is_dirty = False
+        self._loading_state = True
+        self.last_saved_state_signature = None
 
         # text field variables
         self.q_spring_id                    = QtWidgets.QLineEdit("63.5")   # mm
@@ -35,7 +38,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.q_damper_shaft_diameter        = QtWidgets.QLineEdit("20")   # mm
         self.q_body_threaded_length         = QtWidgets.QLineEdit("100")  # mm
 
-        self.use_helper = 0
+        self.use_helper = 1
         self.q_helper_outer_diameter        = QtWidgets.QLineEdit("85")
         self.q_helper_inner_diameter        = QtWidgets.QLineEdit("64")
         self.q_helper_perch_thickness             = QtWidgets.QLineEdit("2.5")
@@ -166,6 +169,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.q_helper_spring_rate,
             self.q_helper_spring_bind_length,
             )
+        self.helper_chk.setChecked(True)
 
         # Bump stop group
         bump_group, self.bump_chk, self.radio_bump_ext, self.radio_bump_int = create_bump_stop_group(
@@ -185,6 +189,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.q_lower_perch_sleeve_height,
             self.q_lower_perch_sleeve_inner_diameter
         )
+        self.lower_perch_adjustable_chk.setChecked(True)
 
         self.on_lower_perch_adj_toggled(self.lower_perch_adjustable_chk.isChecked())
         self.lower_perch_sleeve_chk_toggled(self.lower_perch_sleeve_chk.isChecked())
@@ -369,6 +374,10 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # initial draw
         self.update_view()
         self.default_project_state = self.get_project_state()
+        self.last_saved_state_signature = self.project_signature(self.default_project_state)
+        self.is_dirty = False
+        self._loading_state = False
+        self.update_window_title()
 
         # Menus
         file_menu = self.menuBar().addMenu("File")
@@ -399,17 +408,28 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         """
         for widget in self.input_fields.values():
             widget.editingFinished.connect(self.update_view)
+            widget.editingFinished.connect(self.mark_dirty)
 
         self.helper_chk.toggled.connect(self.update_view)
+        self.helper_chk.toggled.connect(self.mark_dirty)
         self.helper_above.toggled.connect(self.update_view)
+        self.helper_above.toggled.connect(self.mark_dirty)
         self.helper_below.toggled.connect(self.update_view)
+        self.helper_below.toggled.connect(self.mark_dirty)
         self.bump_chk.toggled.connect(self.update_view)
+        self.bump_chk.toggled.connect(self.mark_dirty)
         self.radio_bump_ext.toggled.connect(self.update_view)
+        self.radio_bump_ext.toggled.connect(self.mark_dirty)
         self.radio_bump_int.toggled.connect(self.update_view)
+        self.radio_bump_int.toggled.connect(self.mark_dirty)
         self.lower_perch_adjustable_chk.toggled.connect(self.update_view)
+        self.lower_perch_adjustable_chk.toggled.connect(self.mark_dirty)
         self.lower_perch_sleeve_chk.toggled.connect(self.update_view)
+        self.lower_perch_sleeve_chk.toggled.connect(self.mark_dirty)
         self.flip_damper_chk.toggled.connect(self.update_view)
+        self.flip_damper_chk.toggled.connect(self.mark_dirty)
         self.corner_button_group.buttonClicked.connect(lambda _: self.update_view())
+        self.corner_button_group.buttonClicked.connect(lambda _: self.mark_dirty())
         self.view.installEventFilter(self)
         self.reset_view_btn.installEventFilter(self)
 
@@ -1117,8 +1137,8 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             f"\n"
             f"Ride height travel: {ride_travel:.1f} mm\n"
             f"Ride height spring force: {ride_force:.1f} N\n"
-            f"Rebound available: {rebound_avail:.1f} mm\n"
-            f"Heave available: {heave_avail:.1f} mm\n"
+            f"Max Rebound Travel: {rebound_avail:.1f} mm\n"
+            f"Max Heave Travel: {heave_avail:.1f} mm\n"
         )
         self.info_label.adjustSize()
 
@@ -1176,10 +1196,36 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             "corner": corner_button.text() if corner_button else None,
         }
 
+    def project_signature(self, state=None):
+        """
+        Generate a stable signature of the project state, ignoring slider position.
+        """
+        if state is None:
+            state = self.get_project_state()
+        trimmed = dict(state)
+        trimmed.pop("slider", None)
+        return json.dumps(trimmed, sort_keys=True)
+
+    def mark_dirty(self):
+        """
+        Update the dirty flag when user-facing state changes (ignores slider).
+        """
+        if getattr(self, "_loading_state", False):
+            return
+        current_sig = self.project_signature()
+        self.is_dirty = current_sig != self.last_saved_state_signature
+        self.update_window_title()
+
+    def update_window_title(self):
+        name = os.path.basename(self.current_file_path) if self.current_file_path else "Untitled"
+        dirty_marker = "*" if self.is_dirty else ""
+        self.setWindowTitle(f"Coilover Tool - {name}{dirty_marker}")
+
     def apply_project_state(self, state):
         """
         Load saved state into the UI.
         """
+        self._loading_state = True
         target_unit = state.get("unit", "mm")
         if target_unit == "in":
             self.radio_imperial.setChecked(True)
@@ -1188,26 +1234,38 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         inputs = state.get("inputs", {})
         for name, widget in self.input_fields.items():
+            if sip.isdeleted(widget):
+                continue
             if name in inputs:
-                widget.setText(str(inputs[name]))
+                try:
+                    widget.setText(str(inputs[name]))
+                except RuntimeError:
+                    continue
 
         toggles = state.get("toggles", {})
         # Checkboxes emit signals to toggle dependent controls
-        self.helper_chk.setChecked(bool(toggles.get("use_helper", False)))
-        if toggles.get("helper_above", True):
-            self.helper_above.setChecked(True)
-        else:
-            self.helper_below.setChecked(True)
+        if not sip.isdeleted(self.helper_chk):
+            self.helper_chk.setChecked(bool(toggles.get("use_helper", True)))
+        if not sip.isdeleted(self.helper_above) and not sip.isdeleted(self.helper_below):
+            if toggles.get("helper_above", True):
+                self.helper_above.setChecked(True)
+            else:
+                self.helper_below.setChecked(True)
 
-        self.bump_chk.setChecked(bool(toggles.get("use_bump", False)))
-        if toggles.get("bump_external", True):
-            self.radio_bump_ext.setChecked(True)
-        else:
-            self.radio_bump_int.setChecked(True)
+        if not sip.isdeleted(self.bump_chk):
+            self.bump_chk.setChecked(bool(toggles.get("use_bump", False)))
+        if not sip.isdeleted(self.radio_bump_ext) and not sip.isdeleted(self.radio_bump_int):
+            if toggles.get("bump_external", True):
+                self.radio_bump_ext.setChecked(True)
+            else:
+                self.radio_bump_int.setChecked(True)
 
-        self.lower_perch_adjustable_chk.setChecked(bool(toggles.get("lower_perch_adjustable", False)))
-        self.lower_perch_sleeve_chk.setChecked(bool(toggles.get("lower_perch_sleeve", False)))
-        self.flip_damper_chk.setChecked(bool(toggles.get("flip_damper", False)))
+        if not sip.isdeleted(self.lower_perch_adjustable_chk):
+            self.lower_perch_adjustable_chk.setChecked(bool(toggles.get("lower_perch_adjustable", True)))
+        if not sip.isdeleted(self.lower_perch_sleeve_chk):
+            self.lower_perch_sleeve_chk.setChecked(bool(toggles.get("lower_perch_sleeve", False)))
+        if not sip.isdeleted(self.flip_damper_chk):
+            self.flip_damper_chk.setChecked(bool(toggles.get("flip_damper", False)))
 
         corner = state.get("corner")
         if corner:
@@ -1219,7 +1277,9 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.slider.blockSignals(True)
         self.slider.setValue(int(state.get("slider", self.slider.value())))
         self.slider.blockSignals(False)
+        self._loading_state = False
         self.update_view()
+        self.mark_dirty()
 
     def _ensure_sus_extension(self, path):
         return path if path.lower().endswith(".sus") else f"{path}.sus"
@@ -1239,15 +1299,20 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-            self.set_current_file(path)
         except OSError as exc:
             QtWidgets.QMessageBox.critical(self, "Save Failed", f"Could not save project:\n{exc}")
+            return False
+        self.set_current_file(path)
+        self.last_saved_state_signature = self.project_signature(data)
+        self.is_dirty = False
+        self.update_window_title()
+        return True
 
     def save_project(self):
         if self.current_file_path:
-            self._write_project_file(self.current_file_path)
+            return self._write_project_file(self.current_file_path)
         else:
-            self.save_project_as()
+            return self.save_project_as()
 
     def save_project_as(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -1257,9 +1322,9 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             "Suspension Project (*.sus);;All Files (*)",
         )
         if not path:
-            return
+            return False
         path = self._ensure_sus_extension(path)
-        self._write_project_file(path)
+        return self._write_project_file(path)
 
     def open_project(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -1282,15 +1347,49 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
         self.apply_project_state(data)
         self.set_current_file(path)
+        self.last_saved_state_signature = self.project_signature(data)
+        self.is_dirty = False
+        self.update_window_title()
 
     def new_project(self):
         self.apply_project_state(self.default_project_state)
         self.set_current_file(None)
+        self.last_saved_state_signature = self.project_signature(self.default_project_state)
+        self.is_dirty = False
+        self.update_window_title()
 
     def set_current_file(self, path):
         self.current_file_path = path
-        name = os.path.basename(path) if path else "Untitled"
-        self.setWindowTitle(f"Coilover Tool - {name}")
+        self.update_window_title()
+
+    def closeEvent(self, event):
+        """
+        Prompt to save when there are unsaved changes.
+        """
+        if not self.is_dirty:
+            event.accept()
+            return
+
+        msg = QtWidgets.QMessageBox(self)
+        msg.setWindowTitle("Unsaved Changes")
+        msg.setText("Save changes before exiting?")
+        msg.setStandardButtons(
+            QtWidgets.QMessageBox.Save |
+            QtWidgets.QMessageBox.Discard |
+            QtWidgets.QMessageBox.Cancel
+        )
+        msg.setDefaultButton(QtWidgets.QMessageBox.Save)
+        choice = msg.exec_()
+
+        if choice == QtWidgets.QMessageBox.Save:
+            if self.save_project():
+                event.accept()
+            else:
+                event.ignore()
+        elif choice == QtWidgets.QMessageBox.Discard:
+            event.accept()
+        else:
+            event.ignore()
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
