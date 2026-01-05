@@ -10,7 +10,10 @@ Python tool for helping you set up coil-over suspension systems.
 - Calculate net spring rates with multiple springs
 
 ## To Do
-- Add bump stop geometry
+- Open and save projects and data in human readable format
+- Make projects vehicle specific and allow different coilover setups per vehicle corner
+- Calculate ideal damping curves and requried adjustment for different spring options
+- Add bump stop 3D geometry
 - Calculate and identify max travel condition: coil bind, bump stop engage, perch collison
 - Calculate static ride position given corner weight, along with bump and droop travel ranges
 - Option for flat spring ends
@@ -25,8 +28,6 @@ Python tool for helping you set up coil-over suspension systems.
 - Calculate warnings for helper springs (fully compressed at full droop, loose main spring at some point through travel range)
 - Lower sleeve geometry for independent ride height and preload
 - option for bump spring instead of bump stop
-- Graphs for spring rate vs damper travel
-- Calculate ideal damping curves and requried adjustment for different spring options
 
 ## Install
 Clone the repository: `git clone https://github.com/bglen/coilover-tool`

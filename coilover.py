@@ -1,8 +1,9 @@
 import sys
 import numpy as np
 
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, sip
 from PyQt5.QtGui import QVector3D
+
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 
@@ -63,9 +64,23 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # 87 mm diameter perch
 
         self.unit = "mm"
+        self.weight_unit = "kg"
+
+        self.corner_weights = {
+            "front_left": QtWidgets.QLineEdit("295"),
+            "front_right": QtWidgets.QLineEdit("295"),
+            "rear_left": QtWidgets.QLineEdit("272"),
+            "rear_right": QtWidgets.QLineEdit("272"),
+        }
+        self.unsprung_weights = {
+            "front_left": QtWidgets.QLineEdit("36"),
+            "front_right": QtWidgets.QLineEdit("36"),
+            "rear_left": QtWidgets.QLineEdit("32"),
+            "rear_right": QtWidgets.QLineEdit("32"),
+        }
 
         # Settings group
-        settings_group, self.radio_mm, self.radio_in = create_settings_group(self.on_unit_changed)
+        settings_group, self.radio_metric, self.radio_imperial = create_settings_group(self.on_unit_changed)
 
         # Spring group
         spring_group = create_spring_group(
@@ -132,15 +147,33 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         # Setup group
         setup_group, self.flip_damper_chk = create_setup_group(self.q_lower_perch_position)
 
-        # Assemble left‐side layout
+        vehicle_tab, self.corner_button_group = create_vehicle_tab(self.corner_weights, self.unsprung_weights)
+
+        # Assemble left‐side layout into tabs
+        coilover_tab = QtWidgets.QWidget()
+        coilover_layout = QtWidgets.QVBoxLayout()
+        coilover_layout.addWidget(spring_group)
+        coilover_layout.addWidget(damper_group)
+        coilover_layout.addWidget(helper_group)
+        coilover_layout.addWidget(bump_group)
+        coilover_layout.addWidget(lower_perch_group)
+        coilover_layout.addWidget(setup_group)
+        coilover_layout.addStretch(1)
+        coilover_tab.setLayout(coilover_layout)
+
+        settings_tab = QtWidgets.QWidget()
+        settings_layout = QtWidgets.QVBoxLayout()
+        settings_layout.addWidget(settings_group)
+        settings_layout.addStretch(1)
+        settings_tab.setLayout(settings_layout)
+
+        tabs = QtWidgets.QTabWidget()
+        tabs.addTab(vehicle_tab, "Vehicle")
+        tabs.addTab(coilover_tab, "Coilover")
+        tabs.addTab(settings_tab, "Settings")
+
         left_layout = QtWidgets.QVBoxLayout()
-        left_layout.addWidget(settings_group)
-        left_layout.addWidget(spring_group)
-        left_layout.addWidget(damper_group)
-        left_layout.addWidget(helper_group)
-        left_layout.addWidget(bump_group)
-        left_layout.addWidget(lower_perch_group)
-        left_layout.addWidget(setup_group)
+        left_layout.addWidget(tabs)
 
         # Separator
         separator = QtWidgets.QFrame()
@@ -265,43 +298,112 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         """
         Re label inputs and convert their numeric values.
         """
-        new_unit = "in" if self.radio_in.isChecked() else "mm"
-        if new_unit == self.unit:
+        new_unit_mode = "imperial" if self.radio_imperial.isChecked() else "metric"
+        if (new_unit_mode == "imperial" and self.unit == "in") or (new_unit_mode == "metric" and self.unit == "mm"):
             return
 
         # conversion factors
         to_in  = lambda x: x/25.4
         to_mm  = lambda x: x*25.4
-        conv   = to_in if new_unit=="in" else to_mm
+        lb_to_kg = lambda x: x*0.45359237
+        kg_to_lb = lambda x: x/0.45359237
+        nmm_to_lbin = lambda x: x * 5.710147162769185
+        lbin_to_nmm = lambda x: x / 5.710147162769185
+        conv_len = to_in if new_unit_mode=="imperial" else to_mm
+        conv_wt = kg_to_lb if self.weight_unit == "kg" and new_unit_mode=="imperial" else lb_to_kg
+        conv_rate = nmm_to_lbin if new_unit_mode=="imperial" else lbin_to_nmm
+        length_suffix = "in" if new_unit_mode=="imperial" else "mm"
+        weight_suffix = "lb" if new_unit_mode=="imperial" else "kg"
+        rate_suffix = "lbf/in" if new_unit_mode=="imperial" else "N/mm"
 
-        # for each (widget, attr_name) in your inputs:
-        for widget, label_base in [
+        length_widgets = [
             (self.q_spring_id,    "Inner diameter"),
             (self.q_spring_wire_diameter, "Wire diameter"),
             (self.q_spring_free_length,  "Spring free length"),
-            (self.q_spring_rate,  "Spring Rate"),
             (self.q_spring_bind_length,  "Length at bind"),
             (self.q_damper_free_length,  "Damper free length"),
             (self.q_damper_comp_length, "Compressed length"),
             (self.q_damper_body_length,  "Body length"),
             (self.q_damper_body_diameter,  "Body diameter"),
             (self.q_damper_shaft_diameter, "Shaft diameter"),
-            (self.q_lower_perch_position,  "Spring perch distance"),
-        ]:
-            # read old value, convert to new unit
+            (self.q_body_threaded_length, "Body threaded length"),
+            (self.q_helper_outer_diameter, "Helper perch outer diameter"),
+            (self.q_helper_inner_diameter, "Helper perch inner diameter"),
+            (self.q_helper_thickness, "Helper perch thickness"),
+            (self.q_helper_inner_height, "Helper perch inner height"),
+            (self.q_helper_spring_id, "Helper spring inner diameter"),
+            (self.q_helper_spring_od, "Helper spring outer diameter"),
+            (self.q_helper_spring_free_length, "Helper spring free length"),
+            (self.q_helper_spring_bind_length, "Length at bind"),
+            (self.q_bump_height, "Bump stop height"),
+            (self.q_bump_diameter, "Bump stop outer diameter"),
+            (self.q_lower_perch_outer_diameter, "Lower perch outer diameter"),
+            (self.q_lower_perch_thickness, "Lower perch thickness"),
+            (self.q_lower_perch_sleeve_height, "Sleeve height"),
+            (self.q_lower_perch_sleeve_inner_diameter, "Sleeve inner diameter"),
+            (self.q_upper_perch_outer_diameter, "Upper perch outer diameter"),
+            (self.q_upper_perch_thickness, "Upper perch thickness"),
+            (self.q_upper_perch_tapered_height, "Helper perch tapered height"),
+            (self.q_lower_perch_position,  "Spring perch starting point"),
+        ]
+
+        rate_widgets = [
+            (self.q_spring_rate,  "Spring Rate"),
+            (self.q_helper_spring_rate, "Helper spring rate"),
+            (self.q_bump_rate, "Bump stop spring rate"),
+        ]
+
+        weight_widgets = [
+            (self.corner_weights["front_left"], "Front Left corner weight"),
+            (self.corner_weights["front_right"], "Front Right corner weight"),
+            (self.corner_weights["rear_left"], "Rear Left corner weight"),
+            (self.corner_weights["rear_right"], "Rear Right corner weight"),
+            (self.unsprung_weights["front_left"], "Front Left unsprung weight"),
+            (self.unsprung_weights["front_right"], "Front Right unsprung weight"),
+            (self.unsprung_weights["rear_left"], "Rear Left unsprung weight"),
+            (self.unsprung_weights["rear_right"], "Rear Right unsprung weight"),
+        ]
+
+        def safe_convert(widgets, conv_fn, suffix):
+            for widget, label_base in widgets:
+                if sip.isdeleted(widget):
+                    continue
+                try:
+                    old_val = float(widget.text())
+                    new_val = conv_fn(old_val)
+                    widget.setText(f"{new_val:.3f}")
+                except (ValueError, RuntimeError):
+                    continue
+
+                try:
+                    label = widget.parentWidget().findChild(QtWidgets.QLabel, label_base)
+                    if label and not sip.isdeleted(label):
+                        label.setText(f"{label_base} ({suffix})")
+                except RuntimeError:
+                    continue
+
+        safe_convert(length_widgets, conv_len, length_suffix)
+        safe_convert(rate_widgets, conv_rate, rate_suffix)
+
+        for widget, label_base in weight_widgets:
+            if sip.isdeleted(widget):
+                continue
             try:
                 old_val = float(widget.text())
-                new_val = conv(old_val)
+                new_val = conv_wt(old_val)
                 widget.setText(f"{new_val:.3f}")
-            except ValueError:
+            except (ValueError, RuntimeError):
+                continue
+
+            try:
+                label = widget.parentWidget().findChild(QtWidgets.QLabel, label_base)
+                if label and not sip.isdeleted(label):
+                    label.setText(f"{label_base} ({weight_suffix})")
+            except RuntimeError:
                 pass
 
-            # update the form label text
-            label = widget.parentWidget().findChild(QtWidgets.QLabel, label_base)
-            if label:
-                label.setText(f"{label_base} ({new_unit})")
-
-        self.unit = new_unit
+        self.unit = "in" if new_unit_mode=="imperial" else "mm"
+        self.weight_unit = "lb" if new_unit_mode=="imperial" else "kg"
 
     def on_helper_toggled(self):
         """
@@ -374,6 +476,15 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             return val * 25.4  # convert inches back to mm
         return val            # already in mm   
 
+    def read_rate(self, widget):
+        """
+        Read a spring rate value and convert to N/mm regardless of UI unit.
+        """
+        val = float(widget.text())
+        if self.unit == "in":
+            return val / 5.710147162769185  # lbf/in -> N/mm
+        return val
+
     def update_view(self):
         """
         Update and render the 3D visualization
@@ -383,7 +494,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.spring_wire_diameter = self.read_length(self.q_spring_wire_diameter)
         self.spring_free_length = self.read_length(self.q_spring_free_length)
         self.spring_bind_length = self.read_length(self.q_spring_bind_length)
-        self.spring_rate = self.read_length(self.q_spring_rate)
+        self.spring_rate = self.read_rate(self.q_spring_rate)
         self.damper_body_diameter = self.read_length(self.q_damper_body_diameter)
         self.damper_body_length = self.read_length(self.q_damper_body_length)
         self.damper_shaft_diameter = self.read_length(self.q_damper_shaft_diameter)
@@ -397,7 +508,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.helper_spring_id = self.read_length(self.q_helper_spring_id)
         self.helper_spring_od = self.read_length(self.q_helper_spring_od)
         self.helper_spring_free_length = self.read_length(self.q_helper_spring_free_length)
-        self.helper_spring_rate = self.read_length(self.q_helper_spring_rate)
+        self.helper_spring_rate = self.read_rate(self.q_helper_spring_rate)
         self.helper_spring_bind_length = self.read_length(self.q_helper_spring_bind_length)
 
         self.shaft_length = self.damper_comp_length #TODO fix this simplificiation

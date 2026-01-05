@@ -3,8 +3,8 @@ from PyQt5 import QtWidgets, QtCore
 def create_settings_group(on_unit_changed):
     group = QtWidgets.QGroupBox("Settings")
     layout = QtWidgets.QHBoxLayout()
-    mm = QtWidgets.QRadioButton("mm")
-    inch = QtWidgets.QRadioButton("in")
+    mm = QtWidgets.QRadioButton("Metric")
+    inch = QtWidgets.QRadioButton("Imperial")
     mm.setChecked(True)
     mm.toggled.connect(on_unit_changed)
     layout.addWidget(mm)
@@ -140,7 +140,7 @@ def create_helper_spring_group(
     helper_layout.addRow(lbl, q_helper_spring_id)
 
     lbl = QtWidgets.QLabel("Helper spring outer diameter (mm):")
-    lbl.setObjectName("Helper spring inner diameter")
+    lbl.setObjectName("Helper spring outer diameter")
     helper_layout.addRow(lbl, q_helper_spring_od)
 
     lbl = QtWidgets.QLabel("Helper spring free length (mm):")
@@ -302,3 +302,61 @@ def create_setup_group(
 
     setup_group.setLayout(setup_layout)
     return setup_group, flip_damper_chk
+
+def create_vehicle_tab(corner_weights, unsprung_weights):
+    vehicle_tab = QtWidgets.QWidget()
+    layout = QtWidgets.QVBoxLayout()
+
+    corner_group = QtWidgets.QGroupBox("Corner Weights")
+    corner_form = QtWidgets.QFormLayout()
+    lbl = QtWidgets.QLabel("Front Left (kg):")
+    lbl.setObjectName("Front Left corner weight")
+    corner_form.addRow(lbl, corner_weights["front_left"])
+    lbl = QtWidgets.QLabel("Front Right (kg):")
+    lbl.setObjectName("Front Right corner weight")
+    corner_form.addRow(lbl, corner_weights["front_right"])
+    lbl = QtWidgets.QLabel("Rear Left (kg):")
+    lbl.setObjectName("Rear Left corner weight")
+    corner_form.addRow(lbl, corner_weights["rear_left"])
+    lbl = QtWidgets.QLabel("Rear Right (kg):")
+    lbl.setObjectName("Rear Right corner weight")
+    corner_form.addRow(lbl, corner_weights["rear_right"])
+    corner_group.setLayout(corner_form)
+
+    unsprung_group = QtWidgets.QGroupBox("Unsprung Weights")
+    unsprung_form = QtWidgets.QFormLayout()
+    lbl = QtWidgets.QLabel("Front Left (kg):")
+    lbl.setObjectName("Front Left unsprung weight")
+    unsprung_form.addRow(lbl, unsprung_weights["front_left"])
+    lbl = QtWidgets.QLabel("Front Right (kg):")
+    lbl.setObjectName("Front Right unsprung weight")
+    unsprung_form.addRow(lbl, unsprung_weights["front_right"])
+    lbl = QtWidgets.QLabel("Rear Left (kg):")
+    lbl.setObjectName("Rear Left unsprung weight")
+    unsprung_form.addRow(lbl, unsprung_weights["rear_left"])
+    lbl = QtWidgets.QLabel("Rear Right (kg):")
+    lbl.setObjectName("Rear Right unsprung weight")
+    unsprung_form.addRow(lbl, unsprung_weights["rear_right"])
+    unsprung_group.setLayout(unsprung_form)
+
+    corner_select_group = QtWidgets.QGroupBox("Suspension Corner")
+    corner_select_layout = QtWidgets.QHBoxLayout()
+    radio_fl = QtWidgets.QRadioButton("Front Left")
+    radio_fr = QtWidgets.QRadioButton("Front Right")
+    radio_rl = QtWidgets.QRadioButton("Rear Left")
+    radio_rr = QtWidgets.QRadioButton("Rear Right")
+    radio_fl.setChecked(True)
+
+    corner_button_group = QtWidgets.QButtonGroup(corner_select_group)
+    for btn in (radio_fl, radio_fr, radio_rl, radio_rr):
+        corner_button_group.addButton(btn)
+        corner_select_layout.addWidget(btn)
+    corner_select_group.setLayout(corner_select_layout)
+
+    layout.addWidget(corner_group)
+    layout.addWidget(unsprung_group)
+    layout.addWidget(corner_select_group)
+    layout.addStretch(1)
+    vehicle_tab.setLayout(layout)
+
+    return vehicle_tab, corner_button_group
