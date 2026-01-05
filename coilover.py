@@ -15,7 +15,7 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Coilover Tool")
-        self.resize(1000, 600)
+        self.resize(1400, 600)
 
         # === Left panel: parameter inputs ===
         form = QtWidgets.QFormLayout()
@@ -194,6 +194,23 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         self.help_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
         self.help_label.show()
 
+        # Spring force plot
+        self.force_plot = pg.PlotWidget()
+        self.force_plot.setBackground('#111')
+        self.force_plot.showGrid(x=True, y=True, alpha=0.3)
+        self.force_plot.setTitle("Spring Force vs Travel")
+        self.force_plot.setLabel('bottom', 'Travel', units='mm')
+        self.force_plot.setLabel('left', 'Spring Force', units='N')
+        self.force_curve = self.force_plot.plot(pen=pg.mkPen('#4fc3f7', width=2))
+        self.force_marker = self.force_plot.plot(
+            [0], [0],
+            pen=None,
+            symbol='o',
+            symbolSize=9,
+            symbolBrush=pg.mkBrush('#fdd835'),
+            symbolPen=pg.mkPen('k', width=0.5)
+        )
+
         # axes for reference
         axis = gl.GLAxisItem()
         axis.setSize(100,100,100)
@@ -210,9 +227,15 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         right_panel = QtWidgets.QVBoxLayout()
 
+        view_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        view_splitter.addWidget(self.view)
+        view_splitter.addWidget(self.force_plot)
+        view_splitter.setStretchFactor(0, 1)
+        view_splitter.setStretchFactor(1, 1)
+
         w = QtWidgets.QWidget()
         w.setLayout(right_panel)
-        right_panel.addWidget(self.view)
+        right_panel.addWidget(view_splitter, 1)
         right_panel.addWidget(self.slider)
         splitter.addWidget(scroll)
         splitter.addWidget(w)
@@ -566,25 +589,21 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
 
 
         # travel info
+        self.compute_force_curve()
         self.animate(self.slider.value())
 
-    def animate(self, t):
+    def compute_state(self, f):
         """
-        t = 0 to 100 slider: moves spring + shaft
+        Calculate geometry and force state for a normalized travel fraction f (0–1).
         """
-        
-        f = t / 100
+        min_shaft_position = max(
+            self.damper_comp_length,
+            (self.spring_bottom_position - self.spring_wire_diameter / 2 + self.spring_bind_length + self.helper_spring_bind_length + self.helper_thickness)
+        )
 
-        # Calculate minimum allowable shaft position
-        min_shaft_position = max(self.damper_comp_length, (self.spring_bottom_position - self.spring_wire_diameter / 2 + self.spring_bind_length + self.helper_spring_bind_length + self.helper_thickness))
+        shaft_upper_position = self.damper_free_length - (self.damper_free_length - min_shaft_position) * f
+        available_length = shaft_upper_position - (self.spring_bottom_position - self.spring_wire_diameter / 2) - self.helper_thickness
 
-        # Compute the damper length given the slider position
-        self.shaft_upper_position   = self.damper_free_length - (self.damper_free_length - min_shaft_position) * f
-
-        # Calculate the available room between the perches
-        available_length = self.shaft_upper_position - (self.spring_bottom_position - self.spring_wire_diameter / 2) - self.helper_thickness
-
-        # Calculate the spring lengths and total force
         spring_length, helper_spring_length, spring_force = split_strut_length_to_springs(
             self.spring_rate,
             self.helper_spring_rate,
@@ -595,11 +614,74 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
             self.helper_spring_free_length
         )
 
-        # Calculate the spring wire positions and the helper perch position
-        self.spring_upper_position = self.spring_bottom_position + (spring_length - self.spring_wire_diameter)
-        self.helper_perch_position = self.spring_upper_position + self.spring_wire_diameter / 2 + self.helper_thickness / 2
-        self.helper_spring_lower_position = self.helper_perch_position + self.helper_thickness / 2 + self.helper_wire_height / 2
-        self.helper_spring_upper_position = self.helper_spring_lower_position + (helper_spring_length - self.helper_wire_height)
+        spring_upper_position = self.spring_bottom_position + (spring_length - self.spring_wire_diameter)
+        helper_perch_position = spring_upper_position + self.spring_wire_diameter / 2 + self.helper_thickness / 2
+        helper_spring_lower_position = helper_perch_position + self.helper_thickness / 2 + self.helper_wire_height / 2
+        helper_spring_upper_position = helper_spring_lower_position + (helper_spring_length - self.helper_wire_height)
+
+        travel = self.damper_free_length - shaft_upper_position
+
+        return {
+            "min_shaft_position": min_shaft_position,
+            "shaft_upper_position": shaft_upper_position,
+            "available_length": available_length,
+            "spring_length": spring_length,
+            "helper_spring_length": helper_spring_length,
+            "spring_force": spring_force,
+            "spring_upper_position": spring_upper_position,
+            "helper_perch_position": helper_perch_position,
+            "helper_spring_lower_position": helper_spring_lower_position,
+            "helper_spring_upper_position": helper_spring_upper_position,
+            "travel": travel,
+        }
+
+    def compute_force_curve(self, samples=150):
+        """
+        Calculate spring force across the full travel for plotting.
+        """
+        travel_vals = []
+        force_vals = []
+        for f in np.linspace(0, 1, samples):
+            state = self.compute_state(float(f))
+            travel_vals.append(state["travel"])
+            force_vals.append(state["spring_force"])
+
+        self.total_travel = travel_vals[-1] if travel_vals else 0.0
+        self.force_curve.setData(travel_vals, force_vals)
+
+        # Keep axes reasonable when values are constant/zero
+        x_max = max(travel_vals) if travel_vals else 1
+        self.force_plot.setXRange(0, x_max, padding=0.02)
+        if force_vals:
+            y_min = min(force_vals)
+            y_max = max(force_vals)
+            if y_min == y_max:
+                y_min -= 1
+                y_max += 1
+            y_span_max = y_max if y_max != 0 else 1
+            self.force_plot.setYRange(y_min, y_span_max * 1.05, padding=0.05)
+
+    def update_force_marker(self, state):
+        """
+        Move the indicator point to the current slider position.
+        """
+        if hasattr(self, "force_marker"):
+            self.force_marker.setData([state["travel"]], [state["spring_force"]])
+
+    def apply_state(self, state):
+        """
+        Update meshes, labels, and overlays for a given state snapshot.
+        """
+        self.shaft_upper_position = state["shaft_upper_position"]
+        self.spring_upper_position = state["spring_upper_position"]
+        self.helper_perch_position = state["helper_perch_position"]
+        self.helper_spring_lower_position = state["helper_spring_lower_position"]
+        self.helper_spring_upper_position = state["helper_spring_upper_position"]
+
+        spring_length = state["spring_length"]
+        helper_spring_length = state["helper_spring_length"]
+        available_length = state["available_length"]
+        spring_force = state["spring_force"]
 
         # Regenerate the main spring helix
         zs = np.linspace(self.spring_bottom_position, self.spring_upper_position, self.main_theta.size)
@@ -643,6 +725,15 @@ class CoiloverDesigner(QtWidgets.QMainWindow):
         lbl_h = self.help_label.height()
         # center horizontally, place 10px above bottom
         self.help_label.move((w - lbl_w)//2, h - lbl_h - 10)
+
+    def animate(self, t):
+        """
+        t = 0 to 100 slider: moves spring + shaft
+        """
+        f = t / 100
+        state = self.compute_state(f)
+        self.apply_state(state)
+        self.update_force_marker(state)
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     win = CoiloverDesigner()
